@@ -8,6 +8,7 @@ This directory is the source of truth for the production backend used by the Viv
 - `vivace-admin` — private administration UI/API for submissions, recordings, transcripts, retry actions, and manual corrections.
 - `vivace-mcp` — read-only MCP connector used by ChatGPT to search and fetch Vivace submissions.
 - `vivace-maintenance` — scheduled cleanup of abandoned uploads, old failed rows, and stale rate-limit records.
+- `vivace-drive-backup` — creates immutable, checksummed Google Drive backups of submission JSON and original recordings.
 
 Old one-off debugging functions are intentionally not part of the production source tree. Their deployed endpoints return `410 DISABLED` until they are deleted from the Supabase project.
 
@@ -17,9 +18,12 @@ Never commit raw secret values.
 
 - Supabase Edge Function secret: `GEMINI_API_KEY`
 - Supabase Vault secret: `vivace_worker_token`
+- Supabase Vault secret: `vivace_drive_bridge_secret`
 - The administration key and MCP key are represented in source only by SHA-256 hashes. Their raw values must remain outside Git.
 
-The value stored in Vault as `vivace_worker_token` must match the SHA-256 hash configured as `WORKER_KEY_SHA256` in both `vivace-discovery-submit` and `vivace-maintenance`.
+The value stored in Vault as `vivace_worker_token` must match the SHA-256 hash configured as `WORKER_KEY_SHA256` in `vivace-discovery-submit`, `vivace-maintenance`, and `vivace-drive-backup`.
+
+The `vivace_drive_bridge_secret` value must match the private Script Property used by the Google Apps Script bridge. See [DRIVE_BACKUP.md](./DRIVE_BACKUP.md) for backup and recovery details.
 
 ## Database migrations
 
@@ -29,6 +33,7 @@ Apply migrations in filename order. The migrations record:
 2. A bounded extra retry round so submissions with up to 50 recordings can finish.
 3. Hourly cleanup of abandoned uploads and old failed submissions.
 4. A transcription quality gate that marks suspicious output for review.
+5. A durable external Drive backup queue with locking, checksums, retries, and a five-minute cron.
 
 ## Deployment
 
@@ -40,15 +45,17 @@ supabase functions deploy vivace-discovery-submit --no-verify-jwt
 supabase functions deploy vivace-admin --no-verify-jwt
 supabase functions deploy vivace-mcp --no-verify-jwt
 supabase functions deploy vivace-maintenance --no-verify-jwt
+supabase functions deploy vivace-drive-backup --no-verify-jwt
 ```
 
 After deployment, verify:
 
 - all migrations are listed as applied;
-- `vivace-transcription-retry` and `vivace-maintenance-hourly` are active in `cron.job`;
+- `vivace-transcription-retry`, `vivace-maintenance-hourly`, and `vivace-drive-backup-every-5m` are active in `cron.job`;
 - the storage bucket `vivace-discovery-private` remains private;
-- no raw API key or worker token exists in the repository;
-- a test submission reaches `transcription_status = complete` and is then removed.
+- no raw API key, worker token, or Drive bridge secret exists in the repository;
+- a test submission reaches `transcription_status = complete` and is then removed;
+- all corresponding `vivace_drive_backup_items` rows eventually reach `complete`, with Drive IDs, byte sizes, and SHA-256 values.
 
 ## Data handling
 
