@@ -7,6 +7,9 @@ verify_jwt = false
 [functions.vivace-admin]
 verify_jwt = false
 
+[functions.vivace-admin-login]
+verify_jwt = false
+
 [functions.vivace-mcp]
 verify_jwt = false
 
