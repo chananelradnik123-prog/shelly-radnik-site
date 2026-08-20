@@ -15,7 +15,7 @@ create table if not exists public.vivace_discovery_invites (
   last_used_at timestamptz,
   disabled_at timestamptz,
   metadata jsonb not null default '{}'::jsonb,
-  constraint vivace_discovery_invites_use_count_check check (use_count <= max_uses)
+  constraint vivace_discovery_invites_usage_limit_check check (use_count <= max_uses)
 );
 
 alter table public.vivace_discovery_invites enable row level security;
