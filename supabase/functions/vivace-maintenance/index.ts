@@ -35,8 +35,10 @@ Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, 405)
   if (!(await authorized(req))) return json({ error: 'UNAUTHORIZED' }, 403)
 
-  const cutoffUploading = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-  const cutoffFailed = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const now = new Date()
+  const cutoffUploading = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
+  const cutoffFailed = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const revokedSessionCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
   const deleted: any[] = []
   const errors: any[] = []
 
@@ -71,10 +73,21 @@ Deno.serve(async (req: Request) => {
 
     await db.from('vivace_request_rate_limits').delete().lt(
       'window_start',
-      new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
     )
 
-    return json({ ok: errors.length === 0, deleted, errors, checked: (rows || []).length }, errors.length ? 207 : 200)
+    const expiredSessions = await db.from('vivace_admin_sessions').delete().lt('expires_at', now.toISOString()).select('id')
+    if (expiredSessions.error) throw expiredSessions.error
+    const revokedSessions = await db.from('vivace_admin_sessions').delete().lt('revoked_at', revokedSessionCutoff).select('id')
+    if (revokedSessions.error) throw revokedSessions.error
+
+    return json({
+      ok: errors.length === 0,
+      deleted,
+      errors,
+      checked: (rows || []).length,
+      adminSessionsCleaned: (expiredSessions.data?.length || 0) + (revokedSessions.data?.length || 0),
+    }, errors.length ? 207 : 200)
   } catch (error) {
     return json({ error: 'MAINTENANCE_FAILED', detail: error instanceof Error ? error.message : String(error) }, 500)
   }
