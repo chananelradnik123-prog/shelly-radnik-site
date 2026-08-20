@@ -18,6 +18,7 @@ const ALLOWED_ORIGINS = new Set([
   'http://127.0.0.1:5173',
 ])
 const MAX_USABLE_KEYS_PER_TYPE = 5
+const CREATE_SESSION_MAX_AGE_MS = 15 * 60 * 1000
 
 function cors(origin: string | null) {
   const allowed = origin && ALLOWED_ORIGINS.has(origin)
@@ -62,7 +63,7 @@ async function getAdminSession(req: Request) {
 
   const { data, error } = await db
     .from('vivace_admin_sessions')
-    .select('id,user_agent_hash,expires_at')
+    .select('id,user_agent_hash,created_at,expires_at')
     .eq('token_hash', tokenHash)
     .is('revoked_at', null)
     .gt('expires_at', now)
@@ -71,7 +72,18 @@ async function getAdminSession(req: Request) {
   if (!data || String(data.user_agent_hash) !== userAgentHash) return null
 
   await db.from('vivace_admin_sessions').update({ last_seen_at: now }).eq('id', data.id)
-  return { id: String(data.id), tokenHash }
+  return {
+    id: String(data.id),
+    tokenHash,
+    createdAt: String(data.created_at || ''),
+  }
+}
+
+function sessionFreshForCreation(session: { createdAt: string }) {
+  const createdAt = new Date(session.createdAt).getTime()
+  return Number.isFinite(createdAt)
+    && createdAt <= Date.now() + 60_000
+    && Date.now() - createdAt <= CREATE_SESSION_MAX_AGE_MS
 }
 
 async function consumeCreateLimit(sessionHash: string) {
@@ -104,7 +116,11 @@ async function listKeys(type: 'admin' | 'mcp') {
   return (data || []).map((item: any) => ({ ...item, type }))
 }
 
-async function createKey(type: 'admin' | 'mcp', label: string, session: { id: string; tokenHash: string }) {
+async function createKey(
+  type: 'admin' | 'mcp',
+  label: string,
+  session: { id: string; tokenHash: string },
+) {
   if (!(await consumeCreateLimit(session.tokenHash))) throw new Error('RATE_LIMITED')
 
   const table = tableFor(type)
@@ -170,10 +186,18 @@ Deno.serve(async (req: Request) => {
 
     if (action === 'list') {
       const [adminKeys, mcpKeys] = await Promise.all([listKeys('admin'), listKeys('mcp')])
-      return json({ ok: true, keys: { admin: adminKeys, mcp: mcpKeys } }, 200, origin)
+      return json({
+        ok: true,
+        keys: { admin: adminKeys, mcp: mcpKeys },
+        canCreateWithoutReauth: sessionFreshForCreation(session),
+      }, 200, origin)
     }
 
     if (action === 'create') {
+      if (!sessionFreshForCreation(session)) {
+        return json({ error: 'REAUTH_REQUIRED' }, 401, origin)
+      }
+
       const type = String(body?.type || '')
       if (type !== 'admin' && type !== 'mcp') return json({ error: 'INVALID_KEY_TYPE' }, 400, origin)
       try {
