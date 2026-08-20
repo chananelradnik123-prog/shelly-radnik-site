@@ -8,17 +8,26 @@ Supabase Free does not provide a complete external backup of both database rows 
 
 For each completed submission, the worker stores:
 
-1. A canonical JSON snapshot containing the answers, recording manifest, transcripts, non-ephemeral analysis, transcription status, and transcription quality flags.
+1. A canonical JSON snapshot (`vivace-discovery-backup-v2`) containing answers, recording manifest, transcripts, non-ephemeral analysis, transcription state, quality state, `transcription_data_policy`, retry counters, client-session hash, and invitation linkage metadata.
 2. Every original recording from the private `vivace-discovery-private` Storage bucket.
 
-The snapshot deliberately excludes submission authorization hashes, administration tokens, MCP tokens, and the temporary `_assistant_audio_cache` field.
+The snapshot deliberately excludes credentials and stale runtime state:
+
+- `submission_token_hash`
+- `assistant_access_token`
+- `assistant_access_issued_at`
+- `transcription_lock_until`
+- `transcription_next_retry_at`
+- `_assistant_audio_cache`
+
+These values must be regenerated or left null after a disaster restore rather than restored from old backups.
 
 ## File naming
 
 - Data snapshot: `BACKUP-DATA-Vivace-YYYY-MM-DD-<submission UUID>-<content hash>.json`
 - Audio: `BACKUP-AUDIO-Vivace-YYYY-MM-DD-<submission UUID>-QNN.<extension>`
 
-A changed submission creates a new immutable JSON version because the content fingerprint changes. Unchanged items are not uploaded twice.
+A changed submission creates a new immutable JSON version because the content fingerprint changes. Unchanged items are not uploaded twice. Recording fingerprints are independent from JSON schema changes, so upgrading a data snapshot does not duplicate the audio backup.
 
 ## Integrity and retries
 
@@ -49,17 +58,36 @@ The existing Google Apps Script bridge is currently hardcoded to the `Owner Disc
 
 A separate `Owner Discovery/Backups` folder has been created, but it will remain unused until the Apps Script bridge is upgraded to accept and validate a destination folder or is changed to point directly to that folder. This is an organizational limitation, not a backup-integrity limitation.
 
-## Recovery outline
+## Recovery procedure
 
-1. Download the latest `BACKUP-DATA` JSON file for each submission UUID.
-2. Verify its SHA-256 against `vivace_drive_backup_items.source_sha256` when the original database is available, or retain the hash embedded in the file name as a version identifier.
-3. Insert the JSON `submission` object into a restored `vivace_discovery_submissions` table, excluding generated/internal fields not present in the snapshot.
-4. Upload each matching `BACKUP-AUDIO` file to:
-   `<submission UUID>/QNN.<extension>` in `vivace-discovery-private`.
-5. Verify that `uploaded_recordings`, `recording_manifest`, and the number of restored Storage objects agree.
-6. Run transcription only for recordings whose transcript is absent from the JSON snapshot.
+1. For each submission UUID, download the latest `BACKUP-DATA` file whose `schema_version` is `vivace-discovery-backup-v2`.
+2. Verify the complete JSON file SHA-256 against `vivace_drive_backup_items.source_sha256` when the original database is available. The filename also contains the leading content-hash characters for human version identification.
+3. Parse the JSON and validate that `submission.id`, `recording_manifest`, `uploaded_recordings`, `transcripts`, and `transcription_data_policy` are present and internally consistent.
+4. Recreate the completed submission row from the JSON `submission` object. Do **not** restore excluded security/runtime fields. Generate new access credentials only if the restored application needs them.
+5. If the original invite table is unavailable, restore `invite_id` as null rather than creating a broken foreign-key reference. `invite_claimed_at` may be retained as historical metadata if the target schema allows it.
+6. Download every matching `BACKUP-AUDIO` file and verify its exact byte size and SHA-256 against the backup index.
+7. Upload each recording to `<submission UUID>/QNN.<extension>` in the private `vivace-discovery-private` bucket.
+8. Verify that the set of restored `QNN` files exactly matches the question IDs in `recording_manifest`.
+9. Run transcription only for a manifest entry whose transcript is absent from the restored JSON.
+10. Before any destructive production restore, repeat the procedure in an isolated project/environment.
 
-A destructive restore must first be tested in a separate Supabase project or development branch.
+## Verified recovery drill — 2026-08-21
+
+A non-destructive external recovery drill was performed using completed submission `da8d4d9d-a61e-415d-aaa5-ba94a289c3aa`.
+
+Results:
+
+- The `vivace-discovery-backup-v2` JSON was downloaded from Google Drive, not read from the live Storage bucket.
+- JSON SHA-256 matched the checksum recorded by the backup pipeline.
+- The external JSON matched the live Supabase row for answers, recording manifest, transcripts, non-ephemeral analysis, answer/recording counts, transcription state/provider, data-policy field, and client-session hash.
+- All five backed-up audio files (Q01, Q03, Q04, Q05, Q06) were independently downloaded from Google Drive.
+- 5/5 audio SHA-256 checks matched the backup index.
+- 5/5 byte-size checks matched.
+- 5/5 files had the expected WebM EBML header (`1A45DFA3`).
+- The restored file set exactly matched the five question IDs in the JSON recording manifest.
+- A local isolated restore bundle containing the JSON plus all five audio files was assembled successfully; no live production row or Storage object was modified.
+
+This proves the current external backup is readable and reconstructable for a real multi-recording submission. It does not replace a future clean-room restore into a separate Supabase project before a destructive disaster recovery.
 
 ## Operational checks
 
