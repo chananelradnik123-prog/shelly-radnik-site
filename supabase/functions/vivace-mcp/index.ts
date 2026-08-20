@@ -13,7 +13,7 @@ const BUCKET = 'vivace-discovery-private'
 const KEY_HASH = '29e35774a50c3a765441c21a06005f995fac189721b9385c30f81d70987cf1a1'
 const ADMIN = 'https://chananelradnik123-prog.github.io/shelly-radnik-site/vivace-discovery/?admin=1'
 const PROTOCOL_VERSION = '2025-11-25'
-const SERVER_VERSION = '0.4.0'
+const SERVER_VERSION = '0.5.0'
 const MAX_INLINE_AUDIO_BYTES = 8 * 1024 * 1024
 
 const tools = [
@@ -93,29 +93,60 @@ async function hash(value: string) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+function clientAddress(req: Request) {
+  const forwarded = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+  return forwarded || req.headers.get('cf-connecting-ip') || req.headers.get('x-real-ip') || 'unknown'
+}
+
+async function consumeFailedAuthLimit(req: Request) {
+  const fingerprint = await hash(
+    `${clientAddress(req)}|${(req.headers.get('user-agent') || '').slice(0, 180)}`,
+  )
+  const { data, error } = await db.rpc('vivace_consume_rate_limit', {
+    p_scope: 'mcp_auth_failure',
+    p_key_hash: fingerprint,
+    p_limit: 30,
+    p_window_seconds: 3600,
+  })
+  if (error) {
+    console.error('MCP_RATE_LIMIT_FAILED', error.message)
+    return false
+  }
+  return data === true
+}
+
 async function allowed(req: Request) {
   const url = new URL(req.url)
-  const queryKey = url.searchParams.get('key') || ''
   const auth = req.headers.get('authorization') || ''
   const bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : ''
   const parts = url.pathname.split('/').filter(Boolean)
   const last = parts.at(-1) || ''
   const pathKey = last === 'vivace-mcp' ? '' : last
-  const candidate = queryKey || bearer || pathKey
+  // Bearer is the preferred authentication mechanism. Path-key support remains
+  // temporarily for the existing ChatGPT connection. Query-string keys are rejected.
+  const candidate = bearer || pathKey
   return Boolean(candidate) && (await hash(candidate)) === KEY_HASH
+}
+
+function commonHeaders() {
+  return {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store, max-age=0',
+    'X-Content-Type-Options': 'nosniff',
+  }
 }
 
 function output(id: any, result: any, status = 200) {
   return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), {
     status,
-    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+    headers: commonHeaders(),
   })
 }
 
 function rpcError(id: any, code: number, message: string, status = 200) {
   return new Response(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } }), {
     status,
-    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+    headers: commonHeaders(),
   })
 }
 
@@ -337,10 +368,36 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'GET') {
     return new Response(`Vivace MCP ${SERVER_VERSION}`, {
       status: 200,
-      headers: { 'Cache-Control': 'no-store' },
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+        'X-Content-Type-Options': 'nosniff',
+      },
     })
   }
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 })
+
+  // Authenticate before parsing or dispatching any JSON-RPC method. Existing
+  // path-key clients remain compatible; Bearer auth is preferred for new clients.
+  if (!(await allowed(req))) {
+    const withinLimit = await consumeFailedAuthLimit(req)
+    return new Response(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: null,
+        error: {
+          code: -32001,
+          message: withinLimit ? 'Unauthorized' : 'Too many authentication attempts',
+        },
+      }),
+      {
+        status: withinLimit ? 401 : 429,
+        headers: {
+          ...commonHeaders(),
+          'WWW-Authenticate': 'Bearer realm="vivace-mcp"',
+        },
+      },
+    )
+  }
 
   let message: any
   try {
@@ -361,28 +418,13 @@ Deno.serve(async (req: Request) => {
         'Read-only Vivace OS Discovery connector. Use search, then fetch. fetch returns questionnaire answers and saved Gemini transcripts. Use get_recording only when the original audio is explicitly required.',
     })
   }
-  if (method === 'notifications/initialized') return new Response(null, { status: 202 })
+  if (method === 'notifications/initialized') return new Response(null, {
+    status: 202,
+    headers: { 'Cache-Control': 'no-store, max-age=0', 'X-Content-Type-Options': 'nosniff' },
+  })
   if (method === 'ping') return output(id, {})
   if (method === 'tools/list') return output(id, { tools })
   if (method !== 'tools/call') return rpcError(id, -32601, 'Method not found')
-
-  if (!(await allowed(req))) {
-    return new Response(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        id,
-        error: { code: -32001, message: 'Unauthorized' },
-      }),
-      {
-        status: 401,
-        headers: {
-          'Content-Type': 'application/json',
-          'WWW-Authenticate': 'Bearer realm="vivace-mcp"',
-          'Cache-Control': 'no-store',
-        },
-      },
-    )
-  }
 
   const name = String(message?.params?.name || '')
   const args = message?.params?.arguments || {}
