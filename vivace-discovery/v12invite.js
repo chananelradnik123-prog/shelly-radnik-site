@@ -41,12 +41,12 @@ function setStatus(btn,status,valid,message){
  btn.style.opacity=valid?'1':'.55';
  btn.style.cursor=valid?'pointer':'not-allowed';
  status.textContent=message||'';
- if(!valid)status.style.color='#ffd8cc';
- else status.style.color='';
+ status.style.color=valid?'':'#ffd8cc';
 }
 async function bindGate(){
  const btn=document.querySelector('#v9Send'),status=document.querySelector('#v9Status');
- if(!btn||!status||btn.dataset.inviteGate==='1')return false;
+ if(!btn||!status)return false;
+ if(btn.dataset.inviteGate==='1')return true;
  btn.dataset.inviteGate='1';
  setStatus(btn,status,false,'מאמת קישור הזמנה…');
  if(!validFormat(inviteToken)){
@@ -64,11 +64,12 @@ async function bindGate(){
  return true;
 }
 function boot(){
- if(bindGate())return;
- const observer=new MutationObserver(()=>{bindGate()});
+ const observer=new MutationObserver(()=>{void tryBind()});
+ async function tryBind(){if(await bindGate())observer.disconnect()}
  observer.observe(document.documentElement,{childList:true,subtree:true});
- setTimeout(()=>bindGate(),500);
- setTimeout(()=>bindGate(),1500);
+ void tryBind();
+ setTimeout(()=>{void tryBind()},500);
+ setTimeout(()=>{void tryBind()},1500);
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
