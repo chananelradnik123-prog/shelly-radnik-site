@@ -11,6 +11,7 @@ const db = createClient(SUPABASE_URL, secretKey, {
 
 const ADMIN_KEY_SHA256 = '3ae6b6af1b5000be920bd67a59a5b668bd08bf66db2dafe9980761650b870642'
 const BUCKET = 'vivace-discovery-private'
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000
 const ALLOWED_ORIGINS = new Set([
   'https://chananelradnik123-prog.github.io',
   'https://eadljasmuqnzcrfudsib.supabase.co',
@@ -26,7 +27,7 @@ function cors(origin: string | null) {
   return {
     'Access-Control-Allow-Origin': allowed,
     'Vary': 'Origin',
-    'Access-Control-Allow-Headers': 'content-type, x-vivace-admin-key',
+    'Access-Control-Allow-Headers': 'content-type, x-vivace-admin-key, x-vivace-admin-session',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Cache-Control': 'no-store, max-age=0',
     'X-Content-Type-Options': 'nosniff',
@@ -44,14 +45,74 @@ function clean(value: unknown, max = 20000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max)
 }
 
+function randomHex(bytes = 32) {
+  const buffer = new Uint8Array(bytes)
+  crypto.getRandomValues(buffer)
+  return [...buffer].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 async function sha256Hex(value: string) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-async function isAdmin(req: Request) {
+async function userAgentHash(req: Request) {
+  return sha256Hex((req.headers.get('user-agent') || '').slice(0, 300))
+}
+
+async function isAdminKey(req: Request) {
   const key = req.headers.get('x-vivace-admin-key') || ''
   return key.length >= 12 && (await sha256Hex(key)) === ADMIN_KEY_SHA256
+}
+
+async function getAdminSession(req: Request) {
+  const token = req.headers.get('x-vivace-admin-session') || ''
+  if (!/^[0-9a-f]{64}$/i.test(token)) return null
+
+  const tokenHash = await sha256Hex(token)
+  const now = new Date().toISOString()
+  const { data, error } = await db
+    .from('vivace_admin_sessions')
+    .select('id,user_agent_hash,expires_at')
+    .eq('token_hash', tokenHash)
+    .is('revoked_at', null)
+    .gt('expires_at', now)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  if (String(data.user_agent_hash) !== await userAgentHash(req)) return null
+
+  await db
+    .from('vivace_admin_sessions')
+    .update({ last_seen_at: now })
+    .eq('id', data.id)
+  return data
+}
+
+async function createAdminSession(req: Request) {
+  const token = randomHex(32)
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + SESSION_TTL_MS).toISOString()
+  const tokenHash = await sha256Hex(token)
+  const uaHash = await userAgentHash(req)
+
+  await db
+    .from('vivace_admin_sessions')
+    .delete()
+    .lt('expires_at', now.toISOString())
+
+  const { error } = await db.from('vivace_admin_sessions').insert({
+    token_hash: tokenHash,
+    user_agent_hash: uaHash,
+    expires_at: expiresAt,
+  })
+  if (error) throw error
+  return { token, expiresAt }
+}
+
+async function revokeAdminSession(id: string) {
+  if (!id) return
+  await db.from('vivace_admin_sessions').update({ revoked_at: new Date().toISOString() }).eq('id', id)
 }
 
 function clientAddress(req: Request) {
@@ -94,20 +155,22 @@ function transcriptMap(input: unknown) {
   return map
 }
 
-const ADMIN_HTML = `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vivace OS — ניהול Discovery</title><style>
+const ADMIN_HTML = `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Vivace OS — ניהול Discovery</title><style>
 :root{--g:#14392D;--g2:#0e2b22;--gold:#d6b36c;--rust:#b85f3e;--cream:#f7f3eb;--ink:#17231e;--muted:#68756f;--bad:#9b2e21;--warn:#8a5a10}*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,var(--g2),var(--g));font-family:Arial,sans-serif;color:var(--ink);min-height:100vh}.wrap{max-width:980px;margin:auto;padding:18px}.head{color:#fff;padding:12px 4px 20px}.head h1{margin:0 0 6px;font-size:25px}.head p{margin:0;opacity:.75}.card{background:var(--cream);border-radius:20px;padding:18px;margin-bottom:14px;box-shadow:0 12px 30px #0003}.login{max-width:520px;margin:40px auto}.input{width:100%;padding:14px;border:1px solid #d7d7d1;border-radius:12px;font-size:16px;margin:10px 0}.btn{border:0;border-radius:999px;background:var(--rust);color:#fff;padding:12px 18px;font-weight:800;cursor:pointer}.btn:disabled{opacity:.55;cursor:default}.btn.secondary{background:var(--g)}.btn.small{padding:9px 13px;font-size:13px}.row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}.pill{display:inline-block;padding:5px 9px;border-radius:999px;background:#e8efe9;color:var(--g);font-size:12px;font-weight:700}.pill.warn{background:#fff1d2;color:var(--warn)}.pill.bad{background:#f8ded8;color:var(--bad)}.muted{color:var(--muted);font-size:13px}.submission{cursor:pointer;border:1px solid #dedbd3}.submission:hover{border-color:var(--gold)}.q{padding:13px 0;border-bottom:1px solid #e2ddd4}.q:last-child{border-bottom:0}.qtitle{font-weight:800;margin-bottom:6px}.ans{white-space:pre-wrap;line-height:1.55}.audio{background:#fff;border:1px solid #e1ddd5;border-radius:14px;padding:12px;margin-top:10px}audio{width:100%;margin-top:8px}.trans{background:#eef3ef;border-radius:10px;padding:10px;margin-top:8px;line-height:1.55;white-space:pre-wrap}.empty{padding:30px;text-align:center;color:var(--muted)}.back{margin-bottom:12px}.error{color:var(--bad);font-weight:700;margin-top:10px}.notice{background:#fff1d2;border-radius:12px;padding:11px;margin-top:10px;line-height:1.5}.stats{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}@media(max-width:600px){.wrap{padding:12px}.card{border-radius:16px;padding:14px}.head h1{font-size:22px}}</style></head><body><div class="wrap"><div class="head"><h1>Vivace OS — Discovery</h1><p>מסך ניהול פרטי לתשובות, הקלטות ותמלולים</p></div><div id="app"></div></div><script>
-const ENDPOINT=location.href.split('?')[0];const app=document.getElementById('app');let key=sessionStorage.getItem('vivace_admin_key')||'';
-async function api(body){const r=await fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','x-vivace-admin-key':key},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j}
+const ENDPOINT=location.href.split('?')[0];const app=document.getElementById('app');let session=sessionStorage.getItem('vivace_admin_session')||'';
+async function api(body){const r=await fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','x-vivace-admin-session':session},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));if(!r.ok){if(r.status===401){session='';sessionStorage.removeItem('vivace_admin_session')}throw new Error(j.error||('HTTP '+r.status))}return j}
+async function loginWithKey(key){const r=await fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','x-vivace-admin-key':key},body:JSON.stringify({action:'login'})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j}
 function esc(s){return String(s??'').replace(/[&<>\"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
 function fmtDate(s){try{return new Date(s).toLocaleString('he-IL',{dateStyle:'short',timeStyle:'short'})}catch{return s||''}}
 function txStatus(s){return s==='complete'?'תמלול הושלם':s==='partial'?'תמלול חלקי':s==='failed'?'תמלול נכשל':s==='pending'?'ממתין לתמלול':'אין צורך בתמלול'}
 function txClass(s){return s==='complete'?'':s==='pending'?'warn':'bad'}
-function login(msg=''){app.innerHTML='<div class="card login"><h2>כניסה לניהול</h2><p class="muted">המידע וההקלטות פרטיים. המפתח נשמר רק עד סגירת לשונית הדפדפן.</p><input id="k" class="input" type="password" autocomplete="current-password" placeholder="מפתח ניהול"><button id="go" class="btn">כניסה</button><div class="error">'+esc(msg)+'</div></div>';document.getElementById('k').value=key;document.getElementById('go').onclick=async()=>{key=document.getElementById('k').value.trim();try{await api({action:'list',limit:1});sessionStorage.setItem('vivace_admin_key',key);showList()}catch(e){login(e.message==='RATE_LIMITED'?'יותר מדי ניסיונות. נסה שוב מאוחר יותר.':'מפתח לא תקין')}}}
-async function showList(){app.innerHTML='<div class="card">טוען שליחות…</div>';try{const {submissions}=await api({action:'list',limit:30});if(!submissions.length){app.innerHTML='<div class="card empty">עדיין אין שליחות.</div>';return}app.innerHTML=submissions.map(s=>'<div class="card submission" data-id="'+esc(s.id)+'"><div class="row"><div><b>'+fmtDate(s.completed_at||s.created_at)+'</b><div class="muted">'+esc(s.id.slice(0,8))+'…</div></div><span class="pill">'+(s.status==='complete'?'הושלם':'בתהליך')+'</span></div><div class="stats"><span class="pill">'+s.answered_count+' תשובות</span><span class="pill">'+s.uploaded_recordings+' הקלטות</span><span class="pill">'+((s.transcripts||[]).length)+' תמלולים</span><span class="pill '+txClass(s.transcription_status)+'">'+txStatus(s.transcription_status)+'</span></div></div>').join('');document.querySelectorAll('.submission').forEach(x=>x.onclick=()=>showDetail(x.dataset.id))}catch(e){if(String(e.message).includes('UNAUTHORIZED')){key='';sessionStorage.removeItem('vivace_admin_key');login('יש להתחבר מחדש')}else app.innerHTML='<div class="card error">שגיאה בטעינה: '+esc(e.message)+'</div>'}}
+function login(msg=''){app.innerHTML='<div class="card login"><h2>כניסה לניהול</h2><p class="muted">מפתח הניהול משמש רק לכניסה. לאחר מכן נשמר session זמני עד 8 שעות או עד סגירת הלשונית.</p><input id="k" class="input" type="password" autocomplete="current-password" placeholder="מפתח ניהול"><button id="go" class="btn">כניסה</button><div class="error">'+esc(msg)+'</div></div>';document.getElementById('go').onclick=async()=>{const key=document.getElementById('k').value.trim();document.getElementById('k').value='';try{const result=await loginWithKey(key);session=result.sessionToken||'';if(!session)throw new Error('SESSION_CREATE_FAILED');sessionStorage.setItem('vivace_admin_session',session);showList()}catch(e){login(e.message==='RATE_LIMITED'?'יותר מדי ניסיונות. נסה שוב מאוחר יותר.':'מפתח לא תקין')}}}
+async function logout(){try{if(session)await api({action:'logout'})}catch{}session='';sessionStorage.removeItem('vivace_admin_session');login('התנתקת בהצלחה')}
+async function showList(){app.innerHTML='<div class="card">טוען שליחות…</div>';try{const {submissions}=await api({action:'list',limit:30});const top='<div class="row" style="margin-bottom:12px"><div class="muted">Session ניהול זמני פעיל</div><button id="logout" class="btn secondary small" type="button">התנתק</button></div>';if(!submissions.length){app.innerHTML='<div class="card">'+top+'<div class="empty">עדיין אין שליחות.</div></div>';document.getElementById('logout').onclick=logout;return}app.innerHTML='<div class="card">'+top+'</div>'+submissions.map(s=>'<div class="card submission" data-id="'+esc(s.id)+'"><div class="row"><div><b>'+fmtDate(s.completed_at||s.created_at)+'</b><div class="muted">'+esc(s.id.slice(0,8))+'…</div></div><span class="pill">'+(s.status==='complete'?'הושלם':'בתהליך')+'</span></div><div class="stats"><span class="pill">'+s.answered_count+' תשובות</span><span class="pill">'+s.uploaded_recordings+' הקלטות</span><span class="pill">'+((s.transcripts||[]).length)+' תמלולים</span><span class="pill '+txClass(s.transcription_status)+'">'+txStatus(s.transcription_status)+'</span></div></div>').join('');document.getElementById('logout').onclick=logout;document.querySelectorAll('.submission').forEach(x=>x.onclick=()=>showDetail(x.dataset.id))}catch(e){if(String(e.message).includes('UNAUTHORIZED'))login('יש להתחבר מחדש');else app.innerHTML='<div class="card error">שגיאה בטעינה: '+esc(e.message)+'</div>'}}
 function answersOf(q){const a=Array.isArray(q.answers)?q.answers:[];return a.map(x=>x.name?'<b>'+esc(x.name)+':</b> '+esc(x.value):esc(x.value)).join('<br>')||'<span class="muted">ללא תשובה כתובה</span>'}
 async function retry(id,btn){const old=btn.textContent;btn.disabled=true;btn.textContent='מכניס לתור…';try{await api({action:'retry_transcription',id});btn.textContent='נכנס לתור ✓';setTimeout(()=>showDetail(id),1800)}catch(e){btn.disabled=false;btn.textContent=old;alert('לא ניתן להפעיל תמלול מחדש: '+e.message)}}
-async function showDetail(id){app.innerHTML='<div class="card">טוען שליחה…</div>';try{const {submission:s,recordings}=await api({action:'detail',id});const trans=new Map((s.transcripts||[]).map(t=>[Number(t.questionId),t.text]));const recMap=new Map(recordings.map(r=>[Number(r.questionId),r]));let qs=(s.answers||[]).map(q=>{const n=Number(q.number||0),r=recMap.get(n),t=trans.get(n);return '<div class="q"><div class="qtitle">'+esc(n+'. '+(q.question||('שאלה '+n)))+'</div><div class="ans">'+answersOf(q)+'</div>'+(r?'<div class="audio"><b>הקלטה</b><div class="muted">'+Math.round((r.size||0)/1024)+' KB</div>'+(r.signedUrl?'<audio controls preload="none" src="'+esc(r.signedUrl)+'"></audio>':'<div class="error">לא ניתן לטעון את ההקלטה</div>')+(t?'<div class="trans"><b>תמלול:</b><br>'+esc(t)+'</div>':'<div class="muted" style="margin-top:8px">התמלול עדיין לא נוסף.</div>')+'</div>':'')+'</div>'}).join('');const needs=(s.uploaded_recordings||0)>(s.transcripts||[]).length;const err=s.transcription_last_error?'<div class="notice"><b>שגיאת תמלול אחרונה:</b><br>'+esc(s.transcription_last_error)+'</div>':'';const retryBtn=needs?'<button id="retryTx" class="btn small" type="button">נסה תמלול מחדש</button>':'';app.innerHTML='<button class="btn secondary back" id="back">חזרה לכל השליחות</button><div class="card"><div class="row"><div><h2 style="margin:0">שליחה '+esc(id.slice(0,8))+'…</h2><div class="muted">'+fmtDate(s.completed_at||s.created_at)+'</div></div><span class="pill">'+(s.status==='complete'?'הושלם':'בתהליך')+'</span></div><div class="stats"><span class="pill">'+s.answered_count+' תשובות</span><span class="pill">'+s.uploaded_recordings+' הקלטות</span><span class="pill">'+(s.transcripts||[]).length+' תמלולים</span><span class="pill '+txClass(s.transcription_status)+'">'+txStatus(s.transcription_status)+'</span></div>'+err+'<div style="margin-top:12px">'+retryBtn+'</div></div><div class="card">'+(qs||'<div class="empty">אין נתונים להצגה</div>')+'</div>';document.getElementById('back').onclick=showList;const rb=document.getElementById('retryTx');if(rb)rb.onclick=()=>retry(id,rb)}catch(e){app.innerHTML='<button class="btn secondary back" onclick="location.reload()">חזרה</button><div class="card error">שגיאה: '+esc(e.message)+'</div>'}}
-if(key){showList()}else login();
+async function showDetail(id){app.innerHTML='<div class="card">טוען שליחה…</div>';try{const {submission:s,recordings}=await api({action:'detail',id});const trans=new Map((s.transcripts||[]).map(t=>[Number(t.questionId),t.text]));const recMap=new Map(recordings.map(r=>[Number(r.questionId),r]));const qs=(s.answers||[]).map(q=>{const n=Number(q.number||0),r=recMap.get(n),t=trans.get(n);return '<div class="q"><div class="qtitle">'+esc(n+'. '+(q.question||('שאלה '+n)))+'</div><div class="ans">'+answersOf(q)+'</div>'+(r?'<div class="audio"><b>הקלטה</b><div class="muted">'+Math.round((r.size||0)/1024)+' KB</div>'+(r.signedUrl?'<audio controls preload="none" src="'+esc(r.signedUrl)+'"></audio>':'<div class="error">לא ניתן לטעון את ההקלטה</div>')+(t?'<div class="trans"><b>תמלול:</b><br>'+esc(t)+'</div>':'<div class="muted" style="margin-top:8px">התמלול עדיין לא נוסף.</div>')+'</div>':'')+'</div>'}).join('');const needs=(s.uploaded_recordings||0)>(s.transcripts||[]).length;const err=s.transcription_last_error?'<div class="notice"><b>שגיאת תמלול אחרונה:</b><br>'+esc(s.transcription_last_error)+'</div>':'';const retryBtn=needs?'<button id="retryTx" class="btn small" type="button">נסה תמלול מחדש</button>':'';app.innerHTML='<button class="btn secondary back" id="back">חזרה לכל השליחות</button><div class="card"><div class="row"><div><h2 style="margin:0">שליחה '+esc(id.slice(0,8))+'…</h2><div class="muted">'+fmtDate(s.completed_at||s.created_at)+'</div></div><span class="pill">'+(s.status==='complete'?'הושלם':'בתהליך')+'</span></div><div class="stats"><span class="pill">'+s.answered_count+' תשובות</span><span class="pill">'+s.uploaded_recordings+' הקלטות</span><span class="pill">'+(s.transcripts||[]).length+' תמלולים</span><span class="pill '+txClass(s.transcription_status)+'">'+txStatus(s.transcription_status)+'</span></div>'+err+'<div style="margin-top:12px">'+retryBtn+'</div></div><div class="card">'+(qs||'<div class="empty">אין נתונים להצגה</div>')+'</div>';document.getElementById('back').onclick=showList;const rb=document.getElementById('retryTx');if(rb)rb.onclick=()=>retry(id,rb)}catch(e){if(String(e.message).includes('UNAUTHORIZED'))login('יש להתחבר מחדש');else app.innerHTML='<button class="btn secondary back" onclick="location.reload()">חזרה</button><div class="card error">שגיאה: '+esc(e.message)+'</div>'}}
+if(session){showList()}else login();
 </script></body></html>`
 
 Deno.serve(async (req: Request) => {
@@ -122,20 +185,38 @@ Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, 405, origin)
   if (origin && !ALLOWED_ORIGINS.has(origin)) return json({ error: 'ORIGIN_NOT_ALLOWED' }, 403, origin)
 
-  if (!(await isAdmin(req))) {
-    const allowed = await consumeFailedAuthLimit(req)
-    return json({ error: allowed ? 'UNAUTHORIZED' : 'RATE_LIMITED' }, allowed ? 401 : 429, origin)
-  }
-
+  let body: any = {}
   try {
-    const body = await req.json().catch(() => ({}))
+    body = await req.json().catch(() => ({}))
     const action = String(body?.action || 'list')
+
+    const sessionData = await getAdminSession(req)
+    const keyOk = sessionData ? false : await isAdminKey(req)
+
+    if (action === 'login') {
+      if (!keyOk) {
+        const allowed = await consumeFailedAuthLimit(req)
+        return json({ error: allowed ? 'UNAUTHORIZED' : 'RATE_LIMITED' }, allowed ? 401 : 429, origin)
+      }
+      const created = await createAdminSession(req)
+      return json({ ok: true, sessionToken: created.token, expiresAt: created.expiresAt }, 200, origin)
+    }
+
+    if (!sessionData && !keyOk) {
+      const allowed = await consumeFailedAuthLimit(req)
+      return json({ error: allowed ? 'UNAUTHORIZED' : 'RATE_LIMITED' }, allowed ? 401 : 429, origin)
+    }
+
+    if (action === 'logout') {
+      if (sessionData?.id) await revokeAdminSession(String(sessionData.id))
+      return json({ ok: true }, 200, origin)
+    }
 
     if (action === 'list') {
       const limit = Math.max(1, Math.min(50, Number(body?.limit || 20)))
       const { data, error } = await db
         .from('vivace_discovery_submissions')
-        .select('id,created_at,completed_at,status,answered_count,question_count,expected_recordings,uploaded_recordings,transcripts,transcription_status,transcription_provider,transcription_updated_at,transcription_last_error')
+        .select('id,created_at,completed_at,status,answered_count,question_count,expected_recordings,uploaded_recordings,transcripts,transcription_status,transcription_provider,transcription_updated_at,transcription_last_error,transcription_quality_status')
         .order('created_at', { ascending: false })
         .limit(limit)
       if (error) throw error
@@ -147,7 +228,7 @@ Deno.serve(async (req: Request) => {
       if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: 'INVALID_ID' }, 400, origin)
       const { data: row, error } = await db
         .from('vivace_discovery_submissions')
-        .select('*')
+        .select('id,created_at,completed_at,status,answered_count,question_count,expected_recordings,uploaded_recordings,answers,recording_manifest,transcripts,analysis,transcription_status,transcription_provider,transcription_updated_at,transcription_attempts,transcription_last_error,transcription_quality_status,transcription_review_questions,transcription_data_policy')
         .eq('id', id)
         .single()
       if (error || !row) return json({ error: 'NOT_FOUND' }, 404, origin)
@@ -187,6 +268,7 @@ Deno.serve(async (req: Request) => {
         .update({
           transcription_status: Number(row.uploaded_recordings || 0) > 0 ? 'pending' : 'not_required',
           transcription_attempts: 0,
+          transcription_retry_rounds: 0,
           transcription_lock_until: null,
           transcription_next_retry_at: new Date().toISOString(),
           transcription_last_error: null,
