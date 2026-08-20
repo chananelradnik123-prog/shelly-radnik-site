@@ -70,7 +70,14 @@ function cleanAnalysis(value: unknown) {
 
 function snapshotFor(row: any) {
   return {
-    schema_version: 'vivace-discovery-backup-v1',
+    schema_version: 'vivace-discovery-backup-v2',
+    excluded_security_fields: [
+      'assistant_access_token',
+      'assistant_access_issued_at',
+      'submission_token_hash',
+      'transcription_lock_until',
+      'transcription_next_retry_at',
+    ],
     submission: {
       id: row.id,
       created_at: row.created_at,
@@ -89,8 +96,15 @@ function snapshotFor(row: any) {
       transcription_status: row.transcription_status,
       transcription_provider: row.transcription_provider,
       transcription_updated_at: row.transcription_updated_at,
+      transcription_attempts: row.transcription_attempts,
+      transcription_retry_rounds: row.transcription_retry_rounds,
+      transcription_last_error: row.transcription_last_error,
       transcription_quality_status: row.transcription_quality_status,
       transcription_review_questions: row.transcription_review_questions,
+      transcription_data_policy: row.transcription_data_policy,
+      client_session_key_hash: row.client_session_key_hash,
+      invite_id: row.invite_id,
+      invite_claimed_at: row.invite_claimed_at,
     },
   }
 }
@@ -100,7 +114,9 @@ async function seedItems() {
     'id','created_at','completed_at','client_submitted_at','status','answered_count','question_count',
     'expected_recordings','uploaded_recordings','answers','recording_manifest','client_meta','transcripts',
     'analysis','transcription_status','transcription_provider','transcription_updated_at',
-    'transcription_quality_status','transcription_review_questions',
+    'transcription_attempts','transcription_retry_rounds','transcription_last_error',
+    'transcription_quality_status','transcription_review_questions','transcription_data_policy',
+    'client_session_key_hash','invite_id','invite_claimed_at',
   ].join(',')
   const { data: submissions, error } = await db
     .from('vivace_discovery_submissions')
