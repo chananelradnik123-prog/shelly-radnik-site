@@ -40,9 +40,14 @@ async function uploadRecording(target,rec){
 }
 function friendlyError(e){
  const code=String(e?.message||'');
+ if(code.includes('SUBMISSION_ALREADY_COMPLETED'))return'השאלון כבר נשלח מהסשן הזה. אין צורך לשלוח אותו שוב.';
+ if(code.includes('PRIVACY_ACK_REQUIRED'))return'כדי לשלוח יש לאשר שלא הוזן מידע אישי, סודי או רגיש.';
+ if(code.includes('INVITE_REQUIRED')||code.includes('INVITE_EXPIRED')||code.includes('INVITE_ACCESS'))return'קישור ההזמנה חסר, פג תוקף או אינו תקף. בקש קישור חדש.';
+ if(code.includes('CLIENT_SESSION_INVALID'))return'לא הצלחנו לזהות את סשן הטופס. פתח מחדש את קישור ההזמנה ונסה שוב.';
  if(code.includes('RATE_LIMITED'))return'בוצעו יותר מדי ניסיונות בזמן קצר. המתן כמה דקות ונסה שוב.';
  if(code.includes('RECORDING_SIZE_INVALID')||code.includes('SUBMISSION_TOO_LARGE'))return'אחת ההקלטות ארוכה או גדולה מדי. קצר אותה ונסה שוב.';
  if(code.includes('UPLOADS_INCOMPLETE_OR_INVALID'))return'אחת ההקלטות לא עלתה בשלמותה. כל המידע נשאר במכשיר; נסה שוב.';
+ if(code.includes('SERVICE_TEMPORARILY_UNAVAILABLE'))return'השירות זמנית לא זמין. כל המידע נשאר במכשיר; נסה שוב בעוד כמה דקות.';
  return'לא הצלחנו להשלים את השליחה. כל המידע עדיין שמור במכשיר.';
 }
 async function sendAll(btn,status){
@@ -63,7 +68,7 @@ async function sendAll(btn,status){
    status.textContent=done.transcriptionQueued?'✓ השאלון התקבל. התמלול מתבצע ברקע.':'✓ השאלון התקבל בהצלחה.';
    btn.textContent='נשלח ✓';toast('השאלון נשלח בהצלחה.');
  }catch(e){
-   console.error(e);status.textContent=friendlyError(e);toast('השליחה לא הושלמה — לא נמחק שום מידע.',false);btn.disabled=false;btn.textContent=old;
+   console.error(e);const msg=friendlyError(e);status.textContent=msg;toast(msg,false);btn.disabled=false;btn.textContent=old;
  }
 }
 function mount(){
