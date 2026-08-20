@@ -67,6 +67,18 @@ function clean(value: unknown, max = 20000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max)
 }
 
+function errorDetail(error: unknown) {
+  if (error instanceof Error) return clean(error.message, 1000)
+  if (error && typeof error === 'object') {
+    const item = error as Record<string, unknown>
+    return clean(
+      item.message || item.details || item.hint || item.code || JSON.stringify(item),
+      1000,
+    )
+  }
+  return clean(error, 1000)
+}
+
 function extensionFor(mime = '') {
   const m = mime.toLowerCase()
   if (m.includes('ogg')) return 'ogg'
@@ -210,7 +222,7 @@ async function callGemini(blob: Blob, mimeType: string): Promise<GeminiResult> {
         { inline_data: { mime_type: mimeType, data: encoded } },
       ],
     }],
-    generationConfig: { temperature: 0, maxOutputTokens: 8192 },
+    generationConfig: { maxOutputTokens: 8192 },
   }
 
   let last: GeminiResult = {
@@ -239,7 +251,7 @@ async function callGemini(blob: Blob, mimeType: string): Promise<GeminiResult> {
         last = {
           ok: false,
           status: 'network_error',
-          detail: error instanceof Error ? error.message : String(error),
+          detail: errorDetail(error),
           http: null,
           model,
         }
@@ -478,7 +490,7 @@ async function transcribeSubmission(id: string) {
     )
     console.log('TRANSCRIPTION_RUN_DONE', { id, attempt: claimed.attempt, remaining, ...finalState })
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error)
+    const detail = errorDetail(error)
     console.error('TRANSCRIPTION_FATAL', { id, detail })
     const attempt = Number(claimed?.attempt || 1)
     await db
@@ -764,11 +776,32 @@ Deno.serve(async (req: Request) => {
 
     return json({ error: 'UNKNOWN_ACTION' }, 400, origin)
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error)
+    const detail = errorDetail(error)
+    const upper = detail.toUpperCase()
     console.error('VIVACE_SUBMIT_ERROR', { detail })
-    if (detail === 'RATE_LIMIT_UNAVAILABLE') {
+
+    if (upper.includes('RATE_LIMIT_UNAVAILABLE')) {
       return json({ error: 'SERVICE_TEMPORARILY_UNAVAILABLE' }, 503, origin)
     }
+    if (
+      upper.includes('SUBMISSION_ALREADY_COMPLETED') ||
+      detail.includes('vivace_discovery_completed_session_unique_idx')
+    ) {
+      return json({ error: 'SUBMISSION_ALREADY_COMPLETED' }, 409, origin)
+    }
+    if (upper.includes('CLIENT_SESSION_INVALID')) {
+      return json({ error: 'CLIENT_SESSION_INVALID' }, 400, origin)
+    }
+    if (upper.includes('INVITE_EXPIRED_OR_EXHAUSTED')) {
+      return json({ error: 'INVITE_EXPIRED_OR_EXHAUSTED' }, 403, origin)
+    }
+    if (upper.includes('INVITE_REQUIRED_OR_INVALID')) {
+      return json({ error: 'INVITE_REQUIRED_OR_INVALID' }, 403, origin)
+    }
+    if (upper.includes('PRIVACY_ACK_REQUIRED')) {
+      return json({ error: 'PRIVACY_ACK_REQUIRED' }, 403, origin)
+    }
+
     return json({ error: 'INTERNAL_ERROR' }, 500, origin)
   }
 })
