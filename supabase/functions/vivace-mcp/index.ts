@@ -5,15 +5,18 @@ const raw = Deno.env.get('SUPABASE_SECRET_KEYS')
 const legacy = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 const serviceKey = raw ? JSON.parse(raw).default : legacy
 if (!serviceKey) throw new Error('Missing Supabase secret key')
+
 const db = createClient(SUPABASE_URL, serviceKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 })
 
 const BUCKET = 'vivace-discovery-private'
-const KEY_HASH = '29e35774a50c3a765441c21a06005f995fac189721b9385c30f81d70987cf1a1'
+// Emergency compatibility fallback only when the key-registry RPC itself is unavailable.
+// Normal authentication is performed against public.vivace_mcp_access_keys.
+const LEGACY_KEY_HASH = '29e35774a50c3a765441c21a06005f995fac189721b9385c30f81d70987cf1a1'
 const ADMIN = 'https://chananelradnik123-prog.github.io/shelly-radnik-site/vivace-discovery/?admin=1'
 const PROTOCOL_VERSION = '2025-11-25'
-const SERVER_VERSION = '0.5.0'
+const SERVER_VERSION = '0.6.0'
 const MAX_INLINE_AUDIO_BYTES = 8 * 1024 * 1024
 
 const tools = [
@@ -115,17 +118,37 @@ async function consumeFailedAuthLimit(req: Request) {
   return data === true
 }
 
-async function allowed(req: Request) {
+function accessCandidate(req: Request) {
   const url = new URL(req.url)
   const auth = req.headers.get('authorization') || ''
   const bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : ''
   const parts = url.pathname.split('/').filter(Boolean)
   const last = parts.at(-1) || ''
   const pathKey = last === 'vivace-mcp' ? '' : last
-  // Bearer is the preferred authentication mechanism. Path-key support remains
-  // temporarily for the existing ChatGPT connection. Query-string keys are rejected.
+  // Bearer is preferred. Path-key support remains temporarily for the connected ChatGPT client.
+  // Query-string keys are intentionally ignored.
   const candidate = bearer || pathKey
-  return Boolean(candidate) && (await hash(candidate)) === KEY_HASH
+  if (candidate.length < 20 || candidate.length > 256) return ''
+  return candidate
+}
+
+async function allowed(req: Request) {
+  const candidate = accessCandidate(req)
+  if (!candidate) return false
+  const keyHash = await hash(candidate)
+
+  const { data, error } = await db.rpc('vivace_touch_mcp_access_key', {
+    p_key_hash: keyHash,
+  })
+
+  if (error) {
+    console.error('MCP_KEY_REGISTRY_UNAVAILABLE', error.message)
+    // Fail safely for every credential except the already-connected legacy key.
+    // This avoids an outage if a migration is briefly unavailable during deployment.
+    return keyHash === LEGACY_KEY_HASH
+  }
+
+  return Boolean(data)
 }
 
 function commonHeaders() {
@@ -193,7 +216,9 @@ function normalizeTranscripts(input: any) {
 async function getSubmission(id: string) {
   const { data, error } = await db
     .from('vivace_discovery_submissions')
-    .select('*')
+    .select(
+      'id,created_at,completed_at,status,answered_count,answers,recording_manifest,transcripts,transcription_status,transcription_provider,transcription_updated_at',
+    )
     .eq('id', id)
     .single()
   if (error || !data) throw new Error('SUBMISSION_NOT_FOUND')
@@ -376,8 +401,6 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 })
 
-  // Authenticate before parsing or dispatching any JSON-RPC method. Existing
-  // path-key clients remain compatible; Bearer auth is preferred for new clients.
   if (!(await allowed(req))) {
     const withinLimit = await consumeFailedAuthLimit(req)
     return new Response(
@@ -418,10 +441,15 @@ Deno.serve(async (req: Request) => {
         'Read-only Vivace OS Discovery connector. Use search, then fetch. fetch returns questionnaire answers and saved Gemini transcripts. Use get_recording only when the original audio is explicitly required.',
     })
   }
-  if (method === 'notifications/initialized') return new Response(null, {
-    status: 202,
-    headers: { 'Cache-Control': 'no-store, max-age=0', 'X-Content-Type-Options': 'nosniff' },
-  })
+  if (method === 'notifications/initialized') {
+    return new Response(null, {
+      status: 202,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    })
+  }
   if (method === 'ping') return output(id, {})
   if (method === 'tools/list') return output(id, { tools })
   if (method !== 'tools/call') return rpcError(id, -32601, 'Method not found')
