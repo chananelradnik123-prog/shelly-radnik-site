@@ -2,16 +2,22 @@
 const CHECK_URL='https://eadljasmuqnzcrfudsib.supabase.co/functions/v1/vivace-invite-check';
 const SUBMIT_URL='https://eadljasmuqnzcrfudsib.supabase.co/functions/v1/vivace-discovery-submit';
 const STORAGE_KEY='vivace-invite-token-v1';
-const HIDDEN_FIELD='__vivace_invite_token';
+const INVITE_FIELD='__vivace_invite_token';
+const PRIVACY_FIELD='__vivace_privacy_ack';
+const PRIVACY_VERSION='gemini-free-no-sensitive-v1';
 const nativeFetch=window.fetch.bind(window);
 let inviteToken='';
+let inviteValid=false;
+let privacyAccepted=false;
 try{inviteToken=sessionStorage.getItem(STORAGE_KEY)||''}catch{}
 function validFormat(v){return /^[0-9a-f]{64}$/i.test(String(v||''))}
 function syntheticError(code,status=403){return Promise.resolve(new Response(JSON.stringify({error:code}),{status,headers:{'content-type':'application/json'}}))}
 function decorateQuestions(input){
- const questions=Array.isArray(input)?input.map(q=>({...q,answers:Array.isArray(q?.answers)?q.answers.filter(a=>a?.name!==HIDDEN_FIELD).map(a=>({...a})):[]})):[];
+ const hidden=new Set([INVITE_FIELD,PRIVACY_FIELD]);
+ const questions=Array.isArray(input)?input.map(q=>({...q,answers:Array.isArray(q?.answers)?q.answers.filter(a=>!hidden.has(a?.name)).map(a=>({...a})):[]})):[];
  if(!questions.length)questions.push({number:1,question:'שאלה 1',answers:[]});
- questions[0].answers.push({name:HIDDEN_FIELD,value:inviteToken});
+ questions[0].answers.push({name:INVITE_FIELD,value:inviteToken});
+ questions[0].answers.push({name:PRIVACY_FIELD,value:PRIVACY_VERSION});
  return questions;
 }
 window.fetch=function(input,init){
@@ -21,6 +27,7 @@ window.fetch=function(input,init){
    const body=JSON.parse(init.body);
    if(body?.action==='prepare'){
     if(!validFormat(inviteToken))return syntheticError('INVITE_REQUIRED');
+    if(!privacyAccepted)return syntheticError('PRIVACY_ACK_REQUIRED');
     body.questions=decorateQuestions(body.questions);
     init={...init,body:JSON.stringify(body)};
    }
@@ -35,31 +42,60 @@ async function checkInvite(){
  if(!r.ok)throw new Error(data?.error||`HTTP_${r.status}`);
  return data;
 }
-function setStatus(btn,status,valid,message){
+function ensurePrivacyBox(){
+ const card=document.querySelector('#v9FinalSubmit > div');
+ const btn=document.querySelector('#v9Send');
+ if(!card||!btn)return null;
+ let box=document.querySelector('#v12PrivacyBox');
+ if(box)return box;
+ box=document.createElement('div');
+ box.id='v12PrivacyBox';
+ box.style.cssText='margin:0 0 14px;padding:14px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);font-size:13px;line-height:1.65;text-align:right';
+ box.innerHTML='<div style="font-weight:800;margin-bottom:6px">פרטיות לפני שליחה</div><div style="opacity:.92;margin-bottom:9px">התמלול כרגע מתבצע באמצעות Gemini Free. אין לכלול בתשובות או בהקלטות מידע אישי, סודי או רגיש — למשל ת״ז, פרטי בנק או כרטיס אשראי, סיסמאות וקודים, מידע רפואי, שכר או פרטים מזהים של עובדים.</div><label style="display:flex;gap:9px;align-items:flex-start;cursor:pointer"><input id="v12PrivacyAck" type="checkbox" style="margin-top:4px;accent-color:#D6B36C"><span>אני מאשר שלא כללתי מידע אישי, סודי או רגיש בתשובות ובהקלטות.</span></label>';
+ card.insertBefore(box,btn);
+ const checkbox=box.querySelector('#v12PrivacyAck');
+ checkbox.addEventListener('change',()=>{privacyAccepted=Boolean(checkbox.checked);refreshState()});
+ return box;
+}
+function setButton(btn,enabled){
+ if(!btn)return;
+ btn.disabled=!enabled;
+ btn.style.opacity=enabled?'1':'.55';
+ btn.style.cursor=enabled?'pointer':'not-allowed';
+}
+function refreshState(message){
+ const btn=document.querySelector('#v9Send'),status=document.querySelector('#v9Status');
  if(!btn||!status)return;
- btn.disabled=!valid;
- btn.style.opacity=valid?'1':'.55';
- btn.style.cursor=valid?'pointer':'not-allowed';
- status.textContent=message||'';
- status.style.color=valid?'':'#ffd8cc';
+ const enabled=inviteValid&&privacyAccepted;
+ setButton(btn,enabled);
+ if(message){status.textContent=message;status.style.color=enabled?'':'#ffd8cc';return}
+ if(!inviteValid){status.textContent='קישור ההזמנה חסר, פג תוקף או אינו תקף.';status.style.color='#ffd8cc';return}
+ if(!privacyAccepted){status.textContent='כדי לשלוח, אשר שלא הוזן מידע אישי, סודי או רגיש.';status.style.color='#ffe7a8';return}
+ status.textContent='✓ קישור ההזמנה אומת ואישור הפרטיות התקבל.';status.style.color='';
 }
 async function bindGate(){
  const btn=document.querySelector('#v9Send'),status=document.querySelector('#v9Status');
  if(!btn||!status)return false;
  if(btn.dataset.inviteGate==='1')return true;
  btn.dataset.inviteGate='1';
- setStatus(btn,status,false,'מאמת קישור הזמנה…');
+ ensurePrivacyBox();
+ setButton(btn,false);
+ status.textContent='מאמת קישור הזמנה…';
+ status.style.color='';
  if(!validFormat(inviteToken)){
-  setStatus(btn,status,false,'קישור ההזמנה חסר או אינו תקף. בקש קישור חדש.');
+  inviteValid=false;
+  refreshState('קישור ההזמנה חסר או אינו תקף. בקש קישור חדש.');
   return true;
  }
  try{
   const result=await checkInvite();
-  if(result?.valid){setStatus(btn,status,true,'✓ קישור ההזמנה אומת.');return true}
-  setStatus(btn,status,false,'קישור ההזמנה פג תוקף או שכבר נוצל. בקש קישור חדש.');
+  inviteValid=Boolean(result?.valid);
+  if(inviteValid){refreshState();return true}
+  refreshState('קישור ההזמנה פג תוקף או שכבר נוצל. בקש קישור חדש.');
  }catch(e){
   console.error('invite check failed',e);
-  setStatus(btn,status,false,'לא הצלחנו לאמת את קישור ההזמנה. נסה לרענן את הדף.');
+  inviteValid=false;
+  refreshState('לא הצלחנו לאמת את קישור ההזמנה. נסה לרענן את הדף.');
  }
  return true;
 }
