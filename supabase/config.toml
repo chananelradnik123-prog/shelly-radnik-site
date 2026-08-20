@@ -12,3 +12,6 @@ verify_jwt = false
 
 [functions.vivace-maintenance]
 verify_jwt = false
+
+[functions.vivace-drive-backup]
+verify_jwt = false
