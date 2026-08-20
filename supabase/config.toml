@@ -1,0 +1,14 @@
+# Supabase Edge Function settings for the Vivace OS project.
+# These functions use explicit application-level authentication, so the platform JWT check is disabled.
+
+[functions.vivace-discovery-submit]
+verify_jwt = false
+
+[functions.vivace-admin]
+verify_jwt = false
+
+[functions.vivace-mcp]
+verify_jwt = false
+
+[functions.vivace-maintenance]
+verify_jwt = false
