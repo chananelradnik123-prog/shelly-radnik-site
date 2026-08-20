@@ -15,3 +15,6 @@ verify_jwt = false
 
 [functions.vivace-drive-backup]
 verify_jwt = false
+
+[functions.vivace-invite-check]
+verify_jwt = false
