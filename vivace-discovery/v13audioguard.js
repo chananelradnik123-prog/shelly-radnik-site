@@ -29,6 +29,8 @@ async function validate(btn){
  }
  return {ok:true};
 }
+window.__vivaceAnalyzeAudio=analyze;
+window.__vivaceGetLocalRecordings=getRecordings;
 document.addEventListener('click',e=>{
  const btn=e.target?.closest?.('#v9Send');if(!btn)return;
  if(btn.dataset[APPROVED]==='1'){delete btn.dataset[APPROVED];return}
