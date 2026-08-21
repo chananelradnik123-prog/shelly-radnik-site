@@ -27,3 +27,6 @@ verify_jwt = false
 
 [functions.vivace-alert-feed]
 verify_jwt = false
+
+[functions.vivace-audio-preview]
+verify_jwt = false
