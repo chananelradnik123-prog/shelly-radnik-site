@@ -16,7 +16,7 @@ const BUCKET = 'vivace-discovery-private'
 const LEGACY_KEY_HASH = '29e35774a50c3a765441c21a06005f995fac189721b9385c30f81d70987cf1a1'
 const ADMIN = 'https://chananelradnik123-prog.github.io/shelly-radnik-site/vivace-discovery/?admin=1'
 const PROTOCOL_VERSION = '2025-11-25'
-const SERVER_VERSION = '0.6.0'
+const SERVER_VERSION = '0.7.0'
 const MAX_INLINE_AUDIO_BYTES = 8 * 1024 * 1024
 
 const tools = [
@@ -41,7 +41,7 @@ const tools = [
     name: 'fetch',
     title: 'Fetch Vivace submission',
     description:
-      'Return the full questionnaire answers, recording metadata, saved transcripts, and transcription status for a Vivace submission.',
+      'Return questionnaire answers, recording metadata, and SAVED server transcripts. A recording without a saved transcript is a transcription/capture issue; never create or infer a transcript from the audio yourself.',
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'string' } },
@@ -59,12 +59,16 @@ const tools = [
     name: 'get_recording',
     title: 'Get Vivace recording',
     description:
-      'Return a specific original recording. Prefer the saved transcript from fetch for analysis; use this only when the original audio is explicitly required.',
+      'Return a specific original recording only for explicit user-requested listening or audio-quality inspection. NEVER use this tool to generate, reconstruct, guess, translate, or improve a transcript. If no saved transcript exists, report a transcription/capture failure unless the user explicitly asked to inspect the raw audio quality.',
     inputSchema: {
       type: 'object',
       properties: {
         submission_id: { type: 'string', format: 'uuid' },
         question_id: { type: 'integer', minimum: 1, maximum: 50 },
+        allow_audio_for_quality_check: {
+          type: 'boolean',
+          description: 'Set true only when the user explicitly asks to listen to or inspect the original audio quality. Never set this merely to obtain a transcript.',
+        },
       },
       required: ['submission_id', 'question_id'],
       additionalProperties: false,
@@ -275,6 +279,7 @@ async function fetchTool(args: any) {
       answer: answerText(question?.answers),
       transcript: transcript?.text || null,
       transcriptSource: transcript?.source || null,
+      transcriptionIssue: !transcript,
     }
   })
   const recordings = (Array.isArray(row.recording_manifest) ? row.recording_manifest : []).map(
@@ -284,8 +289,12 @@ async function fetchTool(args: any) {
       mimeType: clean(recording?.mimeType, 100),
       size: Number(recording?.size || 0),
       hasTranscript: transcriptByQuestion.has(Number(recording?.questionId || 0)),
+      transcriptionIssue: !transcriptByQuestion.has(Number(recording?.questionId || 0)),
     }),
   )
+  const missingTranscriptQuestionIds = recordings
+    .filter((item: any) => !item.hasTranscript)
+    .map((item: any) => item.questionId)
 
   const payload = {
     id: `submission:${id}`,
@@ -299,6 +308,11 @@ async function fetchTool(args: any) {
       recordingCount: recordings.length,
       transcriptCount: transcripts.length,
       readyForAnalysis: recordings.length === transcripts.length,
+      transcriptionIssue: missingTranscriptQuestionIds.length > 0,
+      missingTranscriptQuestionIds,
+      agentRule: missingTranscriptQuestionIds.length
+        ? 'Do not transcribe or infer from raw audio. Report the missing/failed transcript as a technical issue.'
+        : 'Use saved transcripts as the transcription source of truth.',
       questions,
       recordings,
       transcripts,
@@ -309,6 +323,8 @@ async function fetchTool(args: any) {
       completedAt: row.completed_at,
       transcriptionStatus: row.transcription_status,
       transcriptionProvider: row.transcription_provider,
+      transcriptionIssue: missingTranscriptQuestionIds.length > 0,
+      missingTranscriptQuestionIds,
       recordings,
       transcripts,
     },
@@ -334,12 +350,31 @@ async function recordingTool(args: any) {
 
   const ext = String(recording?.ext || 'webm').replace(/[^a-z0-9]/gi, '') || 'webm'
   const path = `${id}/Q${String(questionId).padStart(2, '0')}.${ext}`
-  const downloaded = await db.storage.from(BUCKET).download(path)
-  if (downloaded.error || !downloaded.data) throw new Error('AUDIO_DOWNLOAD_FAILED')
-
   const question = (Array.isArray(row.answers) ? row.answers : [])
     .find((item: any) => Number(item?.number) === questionId)
   const questionText = clean(question?.question || `שאלה ${questionId}`, 1000)
+  const transcripts = normalizeTranscripts(row.transcripts)
+  const savedTranscript = transcripts.find((item: any) => item.questionId === questionId)
+  const allowQualityCheck = args?.allow_audio_for_quality_check === true
+
+  if (!savedTranscript && !allowQualityCheck) {
+    return {
+      isError: true,
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          error: 'TRANSCRIPTION_MISSING_OR_FAILED',
+          questionId,
+          question: questionText,
+          instruction: 'Do not transcribe, infer, translate, or guess from the raw audio. Report this as a recording/transcription technical issue. Retrieve the raw audio only if the user explicitly asks to inspect audio quality.',
+        }),
+      }],
+    }
+  }
+
+  const downloaded = await db.storage.from(BUCKET).download(path)
+  if (downloaded.error || !downloaded.data) throw new Error('AUDIO_DOWNLOAD_FAILED')
+
   const resourceMimeType = clean(
     recording?.mimeType || downloaded.data.type || 'audio/webm',
     100,
@@ -347,8 +382,6 @@ async function recordingTool(args: any) {
   const audioMimeType = resourceMimeType.split(';')[0].trim().toLowerCase() || 'audio/webm'
   const size = Number(recording?.size || downloaded.data.size || 0)
   const fileName = `Vivace-${id.slice(0, 8)}-Q${String(questionId).padStart(2, '0')}.${ext}`
-  const transcripts = normalizeTranscripts(row.transcripts)
-  const savedTranscript = transcripts.find((item: any) => item.questionId === questionId)
   const signed = await db.storage.from(BUCKET).createSignedUrl(path, 600, { download: true })
 
   const content: any[] = [{
@@ -358,6 +391,9 @@ async function recordingTool(args: any) {
       question: questionText,
       savedTranscript: savedTranscript?.text || null,
       transcriptSource: savedTranscript?.source || null,
+      transcriptionIssue: !savedTranscript,
+      audioPurpose: allowQualityCheck ? 'user_requested_audio_quality_inspection' : 'original_audio_reference',
+      instruction: 'Never generate or improve a transcript from this audio. The saved transcript, when present, is the only transcription source of truth.',
       fileName,
       mimeType: resourceMimeType,
       size,
@@ -370,7 +406,7 @@ async function recordingTool(args: any) {
   } else {
     content.push({
       type: 'text',
-      text: 'The original audio is larger than the safe inline MCP limit; use the temporary resource link.',
+      text: 'The original audio is larger than the safe inline MCP limit; use the temporary resource link only for explicit audio-quality inspection.',
     })
   }
 
@@ -438,7 +474,7 @@ Deno.serve(async (req: Request) => {
       capabilities: { tools: {} },
       serverInfo: { name: 'vivace-discovery', version: SERVER_VERSION },
       instructions:
-        'Read-only Vivace OS Discovery connector. Use search, then fetch. fetch returns questionnaire answers and saved Gemini transcripts. Use get_recording only when the original audio is explicitly required.',
+        'Read-only Vivace OS Discovery connector. Use search, then fetch. SAVED server transcripts are the only transcription source of truth. Never transcribe, reconstruct, translate, guess, or infer words from raw audio yourself. If a recording exists without a saved transcript, report a recording/transcription technical issue. Use get_recording only when the user explicitly asks to listen to or inspect the original audio quality; audio obtained that way must not be used to create a transcript.',
     })
   }
   if (method === 'notifications/initialized') {
