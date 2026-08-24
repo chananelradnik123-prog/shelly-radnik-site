@@ -122,6 +122,7 @@ async function scan(){
     if(result.status!=='ok'||!clean(result.transcript)){renderUnclear(questionId);continue}
     renderReview(questionId,hash,result)
    }catch(error){
+    if(RECORDING.has(questionId)||(GENERATION.get(questionId)||0)!==generation){SEEN.delete(questionId);continue}
     if(error?.name==='AbortError'){SEEN.delete(questionId);if(!RECORDING.has(questionId)&&!$('#v15PrivacyAck')?.checked)setPanel(questionId,'pending','<div class="vivace-preview-head"><span class="vivace-preview-badge">התמלול מושהה</span></div><div class="vivace-preview-copy">אישור ההקלטות בוטל. ההקלטה נשארה במכשיר ולא נשלחת לתמלול עד לאישור מחדש.</div>');continue}
     console.error('Vivace preview failed',error);renderFailure(questionId,error)
    }
