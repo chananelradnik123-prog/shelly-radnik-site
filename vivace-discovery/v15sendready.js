@@ -200,11 +200,14 @@ function loadSaved(){
  let saved={};try{saved=JSON.parse(localStorage.getItem(FORM_STORAGE_KEY)||'{}')||{}}catch{}
  const form=$('#v15ShortForm');if(!form)return;
  $$('input,textarea,select',form).forEach(element=>{
+  if(element.name==='first_system')return;
   const value=saved[element.name];if(value===undefined)return;
   if(element.type==='checkbox')element.checked=Array.isArray(value)?value.includes(element.value):Boolean(value);
   else if(element.type==='radio')element.checked=value===element.value;
   else element.value=String(value);
  });
+ updateSystemSelect();
+ const firstSystem=$('[name="first_system"]',form),savedSystem=String(saved.first_system||'');if(firstSystem&&savedSystem&&Array.from(firstSystem.options).some(option=>option.value===savedSystem))firstSystem.value=savedSystem;
 }
 
 function collectSaved(){
