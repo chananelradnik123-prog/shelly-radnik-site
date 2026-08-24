@@ -21,21 +21,21 @@ let timerStartedAt=0;
 const audioUrls=new Map();
 
 const questions=[
- {id:1,title:'באיזה סניף נריץ את הפיילוט הראשון?',tag:'בחירה אחת',body:radio('pilot_branch',['קריית יערים','בית שמש','סניף אחר'])+conditionalTextInput('pilot_branch_other','שם הסניף האחר','pilot_branch','סניף אחר')},
- {id:2,title:'איזו תוצאה הכי דחוף לך לשפר ב־90 הימים הקרובים?',tag:'בחירה אחת',body:radio('urgent_result',['לדעת מה צפוי להיכנס ומתי','לא לפספס תשלום או זיכוי','לקצר רדיפה ידנית אחרי מידע ומסמכים','לראות חריגות לפני שהן הופכות לבעיה','לקבל תמונת מצב יומית של הסניף'])},
- {id:3,title:'איזו החלטה פיננסית אתה מקבל היום בלי תמונה מהירה ואמינה מספיק?',tag:'משפט אחד',body:textarea('uncertain_decision','לדוגמה: האם צריך לטפל בתקבול שחסר?')},
- {id:4,title:'מה חייב להופיע במסך הבוקר שלך? סמן עד 5.',tag:'עד 5',body:checkboxes('morning_view',['תקבולים צפויים','תשלומים קרובים','זיכוי או תקבול שחסר','חשבוניות ממתינות','משימות אישור פתוחות','חריגה בין מקורות מידע','מצב הסניף','התראות שעדיין לא טופלו','אחר'],5)+conditionalTextInput('morning_view_other','כתוב בקצרה','morning_view','אחר')},
- {id:5,title:'על אילו אירועים אתה רוצה התראה מיידית? סמן עד 5.',tag:'עד 5',body:checkboxes('instant_alerts',['תקבול או זיכוי שלא הגיעו','פער בין שני מקורות מידע','חשבונית כפולה או חסרה','תשלום קרוב שעדיין לא אושר','מסמך שממתין יותר מדי זמן','חריגת קופה','משימה קריטית שלא בוצעה','אחר'],5)+conditionalTextInput('instant_alerts_other','כתוב בקצרה','instant_alerts','אחר')},
- {id:6,title:'אילו מערכות כבר מחזיקות את המידע שנחוץ לפיילוט?',tag:'סמן את הקיים',body:checkboxes('existing_systems',['Tabit','Wolt','Cibus / Pluxee','10bis','סליקה / בנק','הנהלת חשבונות','מערכת חשבוניות / ספקים','Excel / Google Sheets','WhatsApp','מערכת אחרת'])+conditionalTextInput('existing_systems_other','שם המערכת האחרת','existing_systems','מערכת אחרת')},
- {id:7,title:'מאיזו מערכת הכי חשוב להתחיל למשוך מידע לפיילוט?',tag:'בחירה אחת',body:select('first_system',[['','בחר מערכת'],['לא בטוח','לא בטוח']],'האפשרויות יתעדכנו לפי השאלה הקודמת')},
- {id:8,title:'עד כמה אתה סומך היום על התמונה שאתה מקבל לפני החלטה פיננסית?',tag:'דירוג 1–5',body:rating('trust_level')},
- {id:9,title:'כמה שעות בשבוע, בערך, מושקעות באיסוף מידע, בדיקה, התאמות ורדיפה?',tag:'מספר',body:numberWithUnknown('hours_per_week','מספר שעות בשבוע')},
- {id:10,title:'כמה פעמים בחודש האחרון נדרש בירור ידני בגלל תקבול, זיכוי, תשלום או מסמך לא ברור?',tag:'מספר',body:numberWithUnknown('manual_checks_month','מספר אירועים בחודש')},
- {id:11,title:'כמה זמן עובר בדרך כלל מאירוע שדורש בדיקה עד שאתה יודע עליו בוודאות?',tag:'בחירה אחת',body:radio('discovery_delay',['בזמן אמת','עד סוף היום','יום–יומיים','יותר מיומיים','לא עקבי'])},
- {id:12,title:'מי יטפל בפיילוט ביום־יום מצד העסק?',tag:'שם ותפקיד',body:textInput('pilot_owner_name','שם')+radio('pilot_owner_role',['בעלים','מנהל סניף','מזכירה / משרד','הנהלת חשבונות','אחר'])+conditionalTextInput('pilot_owner_role_other','כתוב תפקיד','pilot_owner_role','אחר')},
- {id:13,title:'מי צריך לראות את מסך השליטה בפיילוט?',tag:'בחירה מרובה',body:checkboxes('dashboard_viewers',['בעלים בלבד','בעלים ומנהל סניף','בעלים ומשרד','מנהל סניף בלבד','הנהלת חשבונות','אחר'])+conditionalTextInput('dashboard_viewers_other','כתוב תפקיד','dashboard_viewers','אחר')},
- {id:14,title:'איזה מדד יוכיח לך שהפיילוט הצליח בתוך 90 יום?',tag:'מדד ויעד',body:select('success_metric',[['','בחר מדד'],['פחות שעות עבודה ידנית בשבוע','פחות שעות עבודה ידנית בשבוע'],['פחות בירורים ידניים בחודש','פחות בירורים ידניים בחודש'],['קיצור זמן גילוי חריגות','קיצור זמן גילוי חריגות'],['יותר פריטים שנסגרים בזמן','יותר פריטים שנסגרים בזמן']])+numberInput('success_target','יעד מספרי — לדוגמה 3 שעות פחות בשבוע')},
- {id:15,title:'מה עלול לעצור את הפיילוט אם לא נטפל בו מראש?',tag:'לא חובה',body:textarea('pilot_blocker','עד שני משפטים: גישה למערכת, בעל תפקיד חסר, תהליך לא מסודר או עומס צוות')}
+ {id:1,title:'באיזה סניף נריץ את הפיילוט הראשון?',tag:'',body:radio('pilot_branch',['קריית יערים','בית שמש','סניף אחר'])+conditionalTextInput('pilot_branch_other','שם הסניף האחר','pilot_branch','סניף אחר')},
+ {id:2,title:'איזו תוצאה הכי דחוף לך לשפר ב־90 הימים הקרובים?',tag:'',body:radio('urgent_result',['לדעת מה צפוי להיכנס ומתי','לא לפספס תשלום או זיכוי','לקצר רדיפה ידנית אחרי מידע ומסמכים','לראות חריגות לפני שהן הופכות לבעיה','לקבל תמונת מצב יומית של הסניף'])},
+ {id:3,title:'איזו החלטה פיננסית אתה מקבל היום בלי תמונה מהירה ואמינה מספיק?',tag:'',body:textarea('uncertain_decision','לדוגמה: האם צריך לטפל בתקבול שחסר?')},
+ {id:4,title:'מה חייב להופיע במסך הבוקר שלך? סמן עד 5.',tag:'',body:checkboxes('morning_view',['תקבולים צפויים','תשלומים קרובים','זיכוי או תקבול שחסר','חשבוניות ממתינות','משימות אישור פתוחות','חריגה בין מקורות מידע','מצב הסניף','התראות שעדיין לא טופלו','אחר'],5)+conditionalTextInput('morning_view_other','כתוב בקצרה','morning_view','אחר')},
+ {id:5,title:'על אילו אירועים אתה רוצה התראה מיידית? סמן עד 5.',tag:'',body:checkboxes('instant_alerts',['תקבול או זיכוי שלא הגיעו','פער בין שני מקורות מידע','חשבונית כפולה או חסרה','תשלום קרוב שעדיין לא אושר','מסמך שממתין יותר מדי זמן','חריגת קופה','משימה קריטית שלא בוצעה','אחר'],5)+conditionalTextInput('instant_alerts_other','כתוב בקצרה','instant_alerts','אחר')},
+ {id:6,title:'אילו מערכות כבר מחזיקות את המידע שנחוץ לפיילוט?',tag:'',body:checkboxes('existing_systems',['Tabit','Wolt','Cibus / Pluxee','10bis','סליקה / בנק','הנהלת חשבונות','מערכת חשבוניות / ספקים','Excel / Google Sheets','WhatsApp','מערכת אחרת'])+conditionalTextInput('existing_systems_other','שם המערכת האחרת','existing_systems','מערכת אחרת')},
+ {id:7,title:'מאיזו מערכת הכי חשוב להתחיל למשוך מידע לפיילוט?',tag:'',body:select('first_system',[['','בחר מערכת'],['לא בטוח','לא בטוח']])},
+ {id:8,title:'עד כמה אתה סומך היום על התמונה שאתה מקבל לפני החלטה פיננסית?',tag:'',body:rating('trust_level')},
+ {id:9,title:'כמה שעות בשבוע, בערך, מושקעות באיסוף מידע, בדיקה, התאמות ורדיפה?',tag:'',body:numberWithUnknown('hours_per_week','מספר שעות בשבוע')},
+ {id:10,title:'כמה פעמים בחודש האחרון נדרש בירור ידני בגלל תקבול, זיכוי, תשלום או מסמך לא ברור?',tag:'',body:numberWithUnknown('manual_checks_month','מספר אירועים בחודש')},
+ {id:11,title:'כמה זמן עובר בדרך כלל מאירוע שדורש בדיקה עד שאתה יודע עליו בוודאות?',tag:'',body:radio('discovery_delay',['בזמן אמת','עד סוף היום','יום–יומיים','יותר מיומיים','לא עקבי'])},
+ {id:12,title:'מי יטפל בפיילוט ביום־יום מצד העסק?',tag:'',body:textInput('pilot_owner_name','שם')+radio('pilot_owner_role',['בעלים','מנהל סניף','מזכירה / משרד','הנהלת חשבונות','אחר'])+conditionalTextInput('pilot_owner_role_other','כתוב תפקיד','pilot_owner_role','אחר')},
+ {id:13,title:'מי צריך לראות את מסך השליטה בפיילוט?',tag:'',body:checkboxes('dashboard_viewers',['בעלים בלבד','בעלים ומנהל סניף','בעלים ומשרד','מנהל סניף בלבד','הנהלת חשבונות','אחר'])+conditionalTextInput('dashboard_viewers_other','כתוב תפקיד','dashboard_viewers','אחר')},
+ {id:14,title:'איזה מדד יוכיח לך שהפיילוט הצליח בתוך 90 יום?',tag:'',body:select('success_metric',[['','בחר מדד'],['פחות שעות עבודה ידנית בשבוע','פחות שעות עבודה ידנית בשבוע'],['פחות בירורים ידניים בחודש','פחות בירורים ידניים בחודש'],['קיצור זמן גילוי חריגות','קיצור זמן גילוי חריגות'],['יותר פריטים שנסגרים בזמן','יותר פריטים שנסגרים בזמן']])+numberInput('success_target','יעד מספרי — לדוגמה 3 שעות פחות בשבוע')},
+ {id:15,title:'מה עלול לעצור את הפיילוט אם לא נטפל בו מראש?',tag:'לא חובה',body:textarea('pilot_blocker','חסם מרכזי, אם יש')}
 ];
 window.__vivaceActiveQuestionIds=questions.map(question=>question.id);
 
@@ -49,11 +49,11 @@ function textarea(name,placeholder){return `<label class="v15-field"><span class
 function select(name,options,hint=''){return `<label class="v15-field"><span class="sr-only">בחר אפשרות</span><select name="${name}">${options.map(([value,label])=>`<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`).join('')}</select>${hint?`<small>${escapeHtml(hint)}</small>`:''}</label>`}
 function rating(name){return `<div class="v15-rating" role="radiogroup" aria-label="דירוג אמון מ־1 עד 5">${[1,2,3,4,5].map(value=>`<label><input type="radio" name="${name}" value="${value}"><span>${value}</span></label>`).join('')}</div><div class="v15-rating-labels"><span>לא סומך</span><span>סומך מאוד</span></div>`}
 function numberWithUnknown(name,placeholder){return `${numberInput(name,placeholder)}<label class="v15-unknown"><input type="checkbox" name="${name}_unknown" value="לא יודע" data-unknown-for="${name}"><span>לא יודע</span></label>`}
-function audioRecorder(id){return `<div class="audio-recorder" data-recorder-for="${id}"><button aria-label="הקלטת תשובה לשאלה ${id} — ייפתח אישור לפני ההקלטה" aria-disabled="false" class="record-button is-locked" data-action="record" type="button"><svg aria-hidden="true" class="mic-icon" viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 0 0 3.5-3.5V6a3.5 3.5 0 1 0-7 0v6a3.5 3.5 0 0 0 3.5 3.5Z" fill="none" stroke="currentColor" stroke-width="1.8"></path><path d="M5.8 11.5a6.2 6.2 0 0 0 12.4 0M12 17.7V21M9 21h6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"></path></svg><span class="record-label">הקלט תשובה</span><span class="record-timer">00:00</span></button><span class="record-status">לחץ כדי לאשר ולהקליט</span><div class="record-playback" hidden></div></div>`}
+function audioRecorder(id){return `<div class="audio-recorder" data-recorder-for="${id}"><button aria-label="הקלטת תשובה לשאלה ${id} — ייפתח אישור לפני ההקלטה" aria-disabled="false" class="record-button is-locked" data-action="record" type="button"><svg aria-hidden="true" class="mic-icon" viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 0 0 3.5-3.5V6a3.5 3.5 0 1 0-7 0v6a3.5 3.5 0 0 0 3.5 3.5Z" fill="none" stroke="currentColor" stroke-width="1.8"></path><path d="M5.8 11.5a6.2 6.2 0 0 0 12.4 0M12 17.7V21M9 21h6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"></path></svg><span class="record-label">הקלט תשובה</span><span class="record-timer">00:00</span></button><span class="record-status" aria-live="polite"></span><div class="record-playback" hidden></div></div>`}
 
 function questionMarkup(question){
  return `<article class="v15-question" id="v15-question-${question.id}" data-question-id="${question.id}" data-question-title="${escapeHtml(question.title)}" data-required="${REQUIRED_IDS.has(String(question.id))?'true':'false'}">
-  <div class="v15-question-head"><span class="qnum">${question.id}</span><div><h2 class="qtitle">${escapeHtml(question.title)}</h2><span class="qtag">${escapeHtml(question.tag)}</span></div></div>${audioRecorder(question.id)}
+  <div class="v15-question-head"><span class="qnum">${question.id}</span><div><h2 class="qtitle">${escapeHtml(question.title)}</h2>${question.tag?`<span class="qtag">${escapeHtml(question.tag)}</span>`:''}</div></div>${audioRecorder(question.id)}
   <div class="v15-answer">${question.body}</div>
   <div class="v15-error" aria-live="polite"></div>
  </article>`;
@@ -62,18 +62,17 @@ function questionMarkup(question){
 function formMarkup(){
  return `<div class="v15-app" id="v15ShortForm">
   <header class="v15-toolbar" id="v15Toolbar">
-   <div class="v15-toolbar-brand"><img src="${VIVACE_LOGO_SRC}" alt="לוגו Vivace"><div><strong>שאלון מיקוד לפיילוט</strong><small>Vivace × Vivace OS</small></div></div>
-   <div class="v15-toolbar-progress" aria-label="התקדמות מילוי"><div><span id="v15ProgressText">0 מתוך 14 שאלות חובה</span><span id="v15SaveState">נשמר במכשיר</span></div><div class="v15-progress-track"><span id="v15ProgressBar"></span></div></div>
-   <div class="v15-toolbar-actions"><button id="v15SaveDraft" type="button">שמור טיוטה</button><button id="v15ReviewSubmit" type="button">בדיקה ושליחה</button></div>
+   <div class="v15-toolbar-brand"><img src="${VIVACE_LOGO_SRC}" alt="לוגו Vivace"><div><strong>שאלון מיקוד לפיילוט</strong></div></div>
+   <div class="v15-toolbar-progress" aria-label="התקדמות מילוי"><div><span id="v15ProgressText">0 מתוך 14</span><span id="v15SaveState">נשמר אוטומטית</span></div><div class="v15-progress-track"><span id="v15ProgressBar"></span></div></div>
+   <div class="v15-toolbar-actions"><button id="v15ReviewSubmit" type="button">בדיקה ושליחה</button></div>
   </header>
   <main class="v15-shell">
   <section class="v15-intro" aria-labelledby="v15IntroTitle">
-   <div class="v15-hero-copy"><span class="v15-kicker">OWNER DISCOVERY · PILOT</span><h1 id="v15IntroTitle">15 שאלות. פיילוט אחד. החלטה ברורה.</h1><p>6–8 דקות כדי לבחור את הפיילוט הראשון של Vivace OS — מסך שליטה, התראות ופעולות ברורות לעסק.</p><div class="v15-facts"><span>15 שאלות</span><span>6–8 דקות</span><span>טיוטה נשמרת אוטומטית</span></div></div>
+   <div class="v15-hero-copy"><h1 id="v15IntroTitle">פיילוט אחד. החלטה ברורה.</h1><p>כ־6–8 דקות כדי לבחור את הפיילוט הראשון של Vivace OS.</p></div>
    <div class="v15-logo-card"><img src="${VIVACE_LOGO_SRC}" alt="Vivace — Famiglia & Pizza"><span>FAMIGLIA &amp; PIZZA</span></div>
-   <div class="v15-privacy"><strong>אפשר לענות גם בהקלטה.</strong><span>ההקלטה נשמרת במערכת Vivace OS ונשלחת ל־Google Gemini לצורך תמלול. השאלון לא מבקש יתרות או סכומים פרטיים; אין למסור סיסמאות, פרטי כרטיס, מספרי תעודה או מידע שאינו נחוץ.</span></div>
    <section class="v15-consent-panel" id="v15ConsentPanel" aria-labelledby="v15ConsentTitle">
-    <div class="v15-consent-copy"><strong id="v15ConsentTitle">אישור הקלטות — פעם אחת בלבד</strong><span>כדי לענות בקול, יש לאשר את עיבוד ההקלטה לתמלול. לאחר מכן הדפדפן יבקש הרשאה למיקרופון.</span></div>
-    <label class="v15-consent"><input id="v15PrivacyAck" name="privacy_ack" type="checkbox"><span>אני מאשר שהקלטות, אם אשתמש בהן, יעובדו באמצעות Google Gemini לצורך תמלול. לא אמסור סיסמאות או פרטי תשלום.</span></label>
+    <div class="v15-consent-copy"><strong id="v15ConsentTitle">רוצה לענות בקול?</strong><span>אישור אחד מפעיל את ההקלטה לכל השאלון.</span></div>
+    <label class="v15-consent"><input id="v15PrivacyAck" name="privacy_ack" type="checkbox"><span>אני מאשר שההקלטות יישלחו ל־Google Gemini לצורך תמלול, ולא אקליט סיסמאות או פרטי תשלום.</span></label>
    </section>
    <div class="v15-identity">
     <label><span>שם ממלא השאלון</span><input id="v15RespondentName" name="respondent_name" type="text" autocomplete="name"></label>
@@ -87,13 +86,11 @@ function formMarkup(){
    <div class="v15-divider"><span>אחריות והצלחת הפיילוט</span></div>
    ${questions.slice(10).map(questionMarkup).join('')}
   </form>
-  <section class="v15-closing" aria-live="polite"><div class="v15-closing-copy"><strong id="v15ClosingTitle">נשארו שאלות חובה.</strong><span id="v15ClosingText">הטיוטה נשמרת אוטומטית במכשיר הזה.</span><div class="v15-missing-list" id="v15MissingList"></div></div><div class="v15-check" aria-hidden="true">✓</div></section>
   </main>
   <div class="v15-consent-dialog" id="v15ConsentDialog" role="dialog" aria-modal="true" aria-labelledby="v15DialogTitle" hidden>
    <div class="v15-consent-sheet">
-    <span class="v15-dialog-kicker">VIVACE OS · AUDIO</span>
-    <h2 id="v15DialogTitle">אישור חד־פעמי לפני ההקלטה</h2>
-    <p>ההקלטה תישמר במערכת Vivace OS ותישלח ל־Google Gemini לצורך תמלול. אין למסור סיסמאות או פרטי תשלום.</p>
+    <h2 id="v15DialogTitle">אישור הקלטה</h2>
+    <p>ההקלטה תישלח ל־Google Gemini לתמלול. אין להקליט סיסמאות או פרטי תשלום.</p>
     <div class="v15-dialog-actions"><button id="v15ConsentCancel" type="button">לא עכשיו</button><button id="v15ConsentContinue" type="button">מאשר ומפעיל מיקרופון</button></div>
    </div>
   </div>
@@ -121,6 +118,8 @@ function styles(){
   body.v15-modal-open{overflow:hidden}.v15-consent-dialog{position:fixed;inset:0;z-index:1000000;display:grid;place-items:center;padding:18px;background:rgba(35,27,24,.62);backdrop-filter:blur(4px)}.v15-consent-dialog[hidden]{display:none}.v15-consent-sheet{width:min(460px,100%);border:1px solid rgba(234,74,62,.25);border-radius:22px;background:var(--v15-paper);padding:24px;box-shadow:0 24px 70px rgba(34,24,20,.3);text-align:center}.v15-dialog-kicker{display:inline-flex;margin:0 auto 12px;border-radius:999px;background:var(--v15-red-soft);color:var(--v15-red-dark);padding:6px 10px;font-size:10px;font-weight:950;letter-spacing:1px;direction:ltr}.v15-consent-sheet h2{margin:0;color:var(--v15-ink);font-size:22px}.v15-consent-sheet p{margin:10px 0 20px;color:var(--v15-muted);font-size:14px;line-height:1.65}.v15-dialog-actions{display:grid;grid-template-columns:1fr 1.35fr;gap:9px}.v15-dialog-actions button{min-height:48px;border-radius:12px;padding:8px 12px;font:inherit;font-weight:850;cursor:pointer}.v15-dialog-actions button:first-child{border:1px solid var(--v15-line);background:#fff;color:var(--v15-ink)}.v15-dialog-actions button:last-child{border:1px solid var(--v15-red);background:var(--v15-red);color:#fff}
   @media(max-width:820px){.v15-toolbar{position:sticky;grid-template-columns:1fr auto;gap:9px 12px;padding:9px 12px}.v15-toolbar-brand img{width:40px;height:40px}.v15-toolbar-brand strong{font-size:13px}.v15-toolbar-progress{grid-column:1/-1;grid-row:2}.v15-toolbar-actions{grid-column:2;grid-row:1}.v15-toolbar-actions button{min-height:40px;padding:0 11px}.v15-toolbar-actions button:first-child{display:none}.v15-shell{width:100%;margin:0 0 36px}.v15-intro{grid-template-columns:1fr;border-radius:0;padding:22px 16px;margin:0;border-width:5px 0 1px;gap:17px}.v15-intro h1{font-size:26px}.v15-intro p{font-size:14px}.v15-logo-card{grid-column:1;grid-row:2;min-height:118px;display:grid;grid-template-columns:112px 1fr;justify-items:center}.v15-logo-card img{width:112px;height:112px}.v15-logo-card span{margin:0;font-size:10px}.v15-privacy,.v15-consent-panel,.v15-identity{grid-column:1}.v15-consent-panel{padding:14px}.v15-identity{grid-template-columns:1fr}.v15-question{border-radius:0;border-width:0 0 1px;padding:18px 15px;box-shadow:none}.v15-question-head{grid-template-columns:38px 1fr;gap:9px}.v15-question .qnum{width:36px;min-width:36px;height:36px}.v15-question .qtitle{font-size:16px}.v15-question>.audio-recorder,.v15-answer,.vivace-preview{margin:14px 0 0}.v15-options{grid-template-columns:1fr}.v15-error{margin:7px 0 0}.v15-closing{border-radius:0;margin:0;padding:20px 16px}.v15-rating{gap:5px}.v15-rating span{min-height:44px}.v15-question .record-playback{grid-template-columns:1fr}.v15-question .audio-action{width:100%}.vivace-preview-actions{display:grid;grid-template-columns:1fr}.vivace-preview button{width:100%}.v15-consent-dialog{align-items:end;padding:0}.v15-consent-sheet{width:100%;border-radius:22px 22px 0 0;padding:22px 17px calc(22px + env(safe-area-inset-bottom))}.v15-dialog-actions{grid-template-columns:1fr}}
   @media(max-width:390px){.v15-toolbar-actions button{font-size:12px}.v15-logo-card{grid-template-columns:96px 1fr}.v15-logo-card img{width:96px;height:96px}.v15-facts span{font-size:10px}.v15-question>.audio-recorder{grid-template-columns:1fr}.v15-question .record-button{width:100%;justify-content:center}.v15-question .record-status{text-align:center}}
+  .v15-question .record-status:empty{display:none}.v15-question .record-playback{grid-template-columns:minmax(150px,1fr) auto}.v15-question .audio-action.delete{min-height:44px;border:0;background:transparent;color:var(--v15-red-dark);padding:0 8px;text-decoration:underline;text-underline-offset:3px}.v15-divider{margin-top:14px;font-size:11px;letter-spacing:0}.v15-toolbar-actions button{border:1px solid var(--v15-red)!important;background:var(--v15-red)!important;color:#fff!important}
+  @media(max-width:820px){.v15-toolbar-actions button:first-child{display:inline-flex;align-items:center;justify-content:center}.v15-question .record-playback{grid-template-columns:minmax(0,1fr) auto}.v15-question .audio-action.delete{width:auto;justify-self:start}.v15-divider{margin:13px 15px 4px}.v15-logo-card{min-height:104px}.v15-logo-card img{width:96px;height:96px}}
   @media print{.v15-toolbar{display:none}.v15-shell{width:100%;margin:0}.v15-question{break-inside:avoid;box-shadow:none}}
  `;document.head.appendChild(style);
 }
@@ -168,12 +167,11 @@ async function renderRecording(questionId,source=undefined){
  let record=source;if(source===undefined){try{record=await getRecording(qid)}catch{record=null}}
  const blob=record instanceof Blob?record:record?.blob;
  const previous=audioUrls.get(qid);if(previous){URL.revokeObjectURL(previous);audioUrls.delete(qid)}
- if(!blob){card.dataset.hasRecording='false';playback.hidden=true;playback.replaceChildren();button.classList.remove('recording','has-recording');label.textContent='הקלט תשובה';timer.textContent='00:00';status.textContent=$('#v15PrivacyAck')?.checked?'אפשר לענות בקול במקום להקליד':'לחץ כדי לאשר ולהקליט';updateProgress();return}
+ if(!blob){card.dataset.hasRecording='false';playback.hidden=true;playback.replaceChildren();button.classList.remove('recording','has-recording');label.textContent='הקלט תשובה';timer.textContent='00:00';status.textContent='';updateProgress();return}
  const url=URL.createObjectURL(blob);audioUrls.set(qid,url);card.dataset.hasRecording='true';playback.hidden=false;playback.replaceChildren();
  const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.src=url;
- const download=document.createElement('a');download.className='audio-action';download.textContent='הורד';download.href=url;download.download=`vivace-question-${qid}.${blob.type.includes('mp4')?'m4a':blob.type.includes('ogg')?'ogg':'webm'}`;
- const remove=document.createElement('button');remove.type='button';remove.className='audio-action delete';remove.textContent='מחק';remove.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();void deleteRecording(qid).then(()=>renderRecording(qid,null)).then(()=>{document.dispatchEvent(new CustomEvent('vivace:recording-deleted',{detail:{questionId:Number(qid)}}));showToast(`ההקלטה של שאלה ${qid} נמחקה`)}).catch(()=>showToast('לא הצלחנו למחוק את ההקלטה'))});
- playback.append(audio,download,remove);button.classList.remove('recording');button.classList.add('has-recording');label.textContent='הקלט מחדש';timer.textContent='00:00';status.textContent='ההקלטה נשמרה וניתן להאזין לה';updateProgress();
+ const remove=document.createElement('button');remove.type='button';remove.className='audio-action delete';remove.textContent='מחק הקלטה';remove.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();if(!window.confirm('למחוק את ההקלטה הזאת?'))return;void deleteRecording(qid).then(()=>renderRecording(qid,null)).then(()=>document.dispatchEvent(new CustomEvent('vivace:recording-deleted',{detail:{questionId:Number(qid)}}))).catch(()=>showToast('לא הצלחנו למחוק את ההקלטה'))});
+ playback.append(audio,remove);button.classList.remove('recording');button.classList.add('has-recording');label.textContent='הקלט מחדש';timer.textContent='00:00';status.textContent=$('#v15PrivacyAck')?.checked?'':'אשר הקלטות כדי לתמלל';updateProgress();
 }
 
 async function startRecording(questionId,box){
@@ -185,7 +183,7 @@ async function startRecording(questionId,box){
   activeStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});const mimeType=bestMimeType();const recorder=mimeType?new MediaRecorder(activeStream,{mimeType}):new MediaRecorder(activeStream);activeRecorder=recorder;activeQuestionId=qid;activeChunks=[];
   let recorderFailed=false;
   recorder.ondataavailable=event=>{if(event.data?.size)activeChunks.push(event.data)};
-  recorder.onstop=()=>{const blob=new Blob(activeChunks,{type:recorder.mimeType||mimeType||'audio/webm'});activeStream?.getTracks().forEach(track=>track.stop());activeStream=null;activeRecorder=null;activeQuestionId='';activeChunks=[];clearInterval(timerHandle);timerHandle=null;button.classList.remove('recording');if(recorderFailed){void renderRecording(qid).finally(()=>document.dispatchEvent(new CustomEvent('vivace:recording-cancelled',{detail:{questionId:Number(qid),hadPrevious}})));showToast(hadPrevious?'ההקלטה החדשה נכשלה — התשובה הקודמת נשארה.':'ההקלטה נכשלה. נסה שוב.');return}if(blob.size<1){void renderRecording(qid).finally(()=>document.dispatchEvent(new CustomEvent('vivace:recording-cancelled',{detail:{questionId:Number(qid),hadPrevious}})));status.textContent=hadPrevious?'לא נקלט אודיו חדש; התשובה הקודמת נשארה':'לא נקלט אודיו. נסה שוב.';showToast(hadPrevious?'לא נקלט אודיו חדש — התשובה הקודמת נשארה.':'לא נקלט אודיו. נסה להקליט שוב.');return}void putRecording(qid,blob).then(()=>renderRecording(qid,blob)).then(()=>{document.dispatchEvent(new CustomEvent('vivace:recording-saved',{detail:{questionId:Number(qid)}}));showToast(`ההקלטה של שאלה ${qid} נשמרה — התמלול מתחיל עכשיו`)}).catch(error=>{console.error('Vivace recording save failed',error);void renderRecording(qid).finally(()=>document.dispatchEvent(new CustomEvent('vivace:recording-cancelled',{detail:{questionId:Number(qid),hadPrevious}})));showToast(hadPrevious?'לא הצלחנו לשמור את ההקלטה החדשה — התשובה הקודמת נשארה.':'לא הצלחנו לשמור את ההקלטה. נסה שוב.')})};
+   recorder.onstop=()=>{const blob=new Blob(activeChunks,{type:recorder.mimeType||mimeType||'audio/webm'});activeStream?.getTracks().forEach(track=>track.stop());activeStream=null;activeRecorder=null;activeQuestionId='';activeChunks=[];clearInterval(timerHandle);timerHandle=null;button.classList.remove('recording');if(recorderFailed){void renderRecording(qid).finally(()=>document.dispatchEvent(new CustomEvent('vivace:recording-cancelled',{detail:{questionId:Number(qid),hadPrevious}})));showToast(hadPrevious?'ההקלטה החדשה נכשלה — התשובה הקודמת נשארה.':'ההקלטה נכשלה. נסה שוב.');return}if(blob.size<1){void renderRecording(qid).finally(()=>document.dispatchEvent(new CustomEvent('vivace:recording-cancelled',{detail:{questionId:Number(qid),hadPrevious}})));status.textContent=hadPrevious?'לא נקלט אודיו חדש; התשובה הקודמת נשארה':'לא נקלט אודיו. נסה שוב.';showToast(hadPrevious?'לא נקלט אודיו חדש — התשובה הקודמת נשארה.':'לא נקלט אודיו. נסה להקליט שוב.');return}void putRecording(qid,blob).then(()=>renderRecording(qid,blob)).then(()=>document.dispatchEvent(new CustomEvent('vivace:recording-saved',{detail:{questionId:Number(qid)}}))).catch(error=>{console.error('Vivace recording save failed',error);void renderRecording(qid).finally(()=>document.dispatchEvent(new CustomEvent('vivace:recording-cancelled',{detail:{questionId:Number(qid),hadPrevious}})));showToast(hadPrevious?'לא הצלחנו לשמור את ההקלטה החדשה — התשובה הקודמת נשארה.':'לא הצלחנו לשמור את ההקלטה. נסה שוב.')})};
   recorder.onerror=event=>{console.error('Vivace MediaRecorder error',event);recorderFailed=true;status.textContent='ההקלטה נעצרה בגלל תקלה';stopRecording()};recorder.start(250);button.classList.add('recording');button.classList.remove('has-recording');label.textContent='עצור הקלטה';status.textContent='מקליט עכשיו… לחץ שוב לעצירה';document.dispatchEvent(new CustomEvent('vivace:recording-started',{detail:{questionId:Number(qid)}}));timerStartedAt=Date.now();timer.textContent='00:00';timerHandle=setInterval(()=>{timer.textContent=formatTime(Date.now()-timerStartedAt);if(Date.now()-timerStartedAt>=MAX_RECORDING_MS){stopRecording();showToast('ההקלטה נעצרה אוטומטית אחרי 5 דקות')}},250);
  }catch(error){console.error('Vivace microphone permission failed',error);activeStream?.getTracks().forEach(track=>track.stop());activeStream=null;activeRecorder=null;activeQuestionId='';status.textContent=error?.name==='NotFoundError'?'לא נמצא מיקרופון במכשיר':'נדרשת הרשאת מיקרופון';showToast(error?.name==='NotFoundError'?'לא נמצא מיקרופון זמין במכשיר.':'יש לאשר גישה למיקרופון בהגדרות הדפדפן.')}
 }
@@ -223,7 +221,7 @@ function collectSaved(){
  });return saved;
 }
 
-function persist(){clearTimeout(saveTimer);const saveState=$('#v15SaveState');if(saveState)saveState.textContent='שומר…';saveTimer=setTimeout(()=>{try{localStorage.setItem(FORM_STORAGE_KEY,JSON.stringify(collectSaved()));if(saveState){saveState.textContent='נשמר עכשיו';setTimeout(()=>{saveState.textContent='נשמר במכשיר'},1200)}}catch{if(saveState)saveState.textContent='נשמר זמנית'}},250)}
+function persist(){clearTimeout(saveTimer);const saveState=$('#v15SaveState');if(saveState)saveState.textContent='שומר…';saveTimer=setTimeout(()=>{try{localStorage.setItem(FORM_STORAGE_KEY,JSON.stringify(collectSaved()));if(saveState){saveState.textContent='נשמר עכשיו';setTimeout(()=>{saveState.textContent='נשמר אוטומטית'},1200)}}catch{if(saveState)saveState.textContent='נשמר זמנית'}},250)}
 
 function selectedValue(name){return $(`input[name="${name}"]:checked`)?.value||''}
 function checkedValues(name){return $$(`input[name="${name}"]:checked`).map(input=>input.value)}
@@ -273,17 +271,15 @@ function focusMissing(item){
 }
 
 function renderMissingItems(items){
- const lists=[$('#v15MissingList'),$('#v15SubmitMissing')].filter(Boolean);
- lists.forEach(list=>{
-  list.replaceChildren();
-  if(!items.length){list.hidden=true;return}
-  list.hidden=false;
-  const intro=document.createElement('span');intro.className='v15-missing-intro';intro.textContent=items.length===1?'חסר עוד פרט אחד:':'הפריטים שחסרים:';list.appendChild(intro);
-  const shown=items.length<=6?items:[items[0]];
-  shown.forEach((item,index)=>{const button=document.createElement('button');button.type='button';button.className='v15-missing-item';button.dataset.missingIndex=String(index);button.textContent=item.label;list.appendChild(button)});
-  if(items.length>6){const more=document.createElement('span');more.className='v15-missing-more';more.textContent=`ועוד ${items.length-1} פריטים — הרשימה תתעדכן ככל שמתקדמים.`;list.appendChild(more)}
- });
  window.__vivaceMissingItems=items;
+ const list=$('#v15SubmitMissing');if(!list)return;
+ list.replaceChildren();
+ if(!items.length){list.hidden=true;return}
+ list.hidden=false;
+ const intro=document.createElement('span');intro.className='v15-missing-intro';intro.textContent=items.length===1?'חסר עוד פרט אחד:':'הפריטים שחסרים:';list.appendChild(intro);
+ const shown=items.length<=6?items:[items[0]];
+ shown.forEach((item,index)=>{const button=document.createElement('button');button.type='button';button.className='v15-missing-item';button.dataset.missingIndex=String(index);button.textContent=item.label;list.appendChild(button)});
+ if(items.length>6){const more=document.createElement('span');more.className='v15-missing-more';more.textContent=`ועוד ${items.length-1} פריטים`;list.appendChild(more)}
 }
 
 function updateSystemSelect(){
@@ -304,27 +300,26 @@ function updateCounters(){
 
 function enhanceSubmit(){
  const card=$('#v9FinalSubmit');if(!card)return;
- const copy=$('div[style*="font-size:14px"]',card);if(copy)copy.textContent='סיימת? התשובות וההקלטות נשלחות בצורה מאובטחת. ההקלטות עוברות בדיקת איכות ונשלחות ל־Google Gemini לצורך תמלול.';
+ const copy=$('div[style*="font-size:14px"]',card);if(copy)copy.textContent='סיימת? בדוק את הפרטים ושלח.';
  const button=$('#v9Send',card),status=$('#v9Status',card);if(button&&button.dataset.inviteGate!=='1'){button.disabled=true;button.style.opacity='.55';button.style.cursor='not-allowed';if(status&&!status.textContent)status.textContent='מאמת קישור הזמנה…'}
  if(!$('#v15SubmitMissing',card)&&status){const missing=document.createElement('div');missing.id='v15SubmitMissing';missing.className='v15-missing-list v15-submit-missing';status.insertAdjacentElement('beforebegin',missing)}
- if(!$('.v15-audio-note',card)){const note=document.createElement('div');note.className='v15-audio-note';note.textContent='אין למסור בהקלטה סיסמאות, פרטי כרטיס, מספרי תעודה או מידע שאינו נחוץ.';$('#v9Status',card)?.insertAdjacentElement('afterend',note)}
+ $('.v15-audio-note',card)?.remove();
 }
 
 function syncAudioConsent(){
  const approved=Boolean($('#v15PrivacyAck')?.checked);
  $('#v15ConsentPanel')?.classList.toggle('is-approved',approved);
- $$('.audio-recorder').forEach(box=>{const button=$('.record-button',box),status=$('.record-status',box),recorded=box.closest('.v15-question')?.dataset.hasRecording==='true';if(button){button.disabled=false;button.classList.toggle('is-locked',!approved);button.setAttribute('aria-disabled','false');button.setAttribute('aria-label',approved?`הקלטת תשובה לשאלה ${box.dataset.recorderFor}`:`הקלטת תשובה לשאלה ${box.dataset.recorderFor} — ייפתח אישור לפני ההקלטה`)}if(status&&!button?.classList.contains('recording'))status.textContent=approved?(recorded?'ההקלטה נשמרה וניתן להאזין לה':'אפשר לענות בקול במקום להקליד'):(recorded?'ההקלטה שמורה; לחץ כדי לאשר ולשלוח':'לחץ כדי לאשר ולהקליט')});
+ $$('.audio-recorder').forEach(box=>{const button=$('.record-button',box),status=$('.record-status',box),recorded=box.closest('.v15-question')?.dataset.hasRecording==='true';if(button){button.disabled=false;button.classList.toggle('is-locked',!approved);button.setAttribute('aria-disabled','false');button.setAttribute('aria-label',approved?`הקלטת תשובה לשאלה ${box.dataset.recorderFor}`:`הקלטת תשובה לשאלה ${box.dataset.recorderFor} — ייפתח אישור לפני ההקלטה`)}if(status&&!button?.classList.contains('recording'))status.textContent=recorded&&!approved?'אשר הקלטות כדי לתמלל':''});
 }
 
 function updateProgress({showErrors=false}={}){
- const cards=$$('.v15-question'),required=cards.filter(card=>REQUIRED_IDS.has(card.dataset.questionId)),answeredRequired=required.filter(isAnswered),optionalAnswered=cards.filter(card=>!REQUIRED_IDS.has(card.dataset.questionId)&&isAnswered(card)),missing=required.filter(card=>!isAnswered(card));
+ const cards=$$('.v15-question'),required=cards.filter(card=>REQUIRED_IDS.has(card.dataset.questionId)),answeredRequired=required.filter(isAnswered),missing=required.filter(card=>!isAnswered(card));
  cards.forEach(card=>{const ok=isAnswered(card),recorded=card.dataset.hasRecording==='true';card.classList.toggle('is-answered',ok);if(showErrors&&REQUIRED_IDS.has(card.dataset.questionId)&&!ok){card.classList.add('has-error');$('.v15-error',card).textContent=recorded?'צריך לבדוק ולאשר את התמלול לפני השליחה.':'צריך להשלים את השאלה לפני השליחה.'}else{card.classList.remove('has-error');$('.v15-error',card).textContent=''}});
- const progressText=$('#v15ProgressText'),progressBar=$('#v15ProgressBar');if(progressText)progressText.textContent=`${answeredRequired.length} מתוך 14 שאלות חובה${optionalAnswered.length?' · שאלת הרשות נענתה':''}`;if(progressBar)progressBar.style.width=`${Math.round(answeredRequired.length/required.length*100)}%`;
+ const progressText=$('#v15ProgressText'),progressBar=$('#v15ProgressBar');if(progressText)progressText.textContent=`${answeredRequired.length} מתוך 14`;if(progressBar)progressBar.style.width=`${Math.round(answeredRequired.length/required.length*100)}%`;
  const nameReady=Boolean($('#v15RespondentName')?.value.trim()),roleReady=Boolean($('#v15RespondentRole')?.value.trim()),hasRecordings=cards.some(card=>card.dataset.hasRecording==='true'),privacyReady=!hasRecordings||Boolean($('#v15PrivacyAck')?.checked),missingItems=currentMissingItems(),missingCount=missingItems.length,complete=missingCount===0;
  $('#v15RespondentName')?.closest('label')?.classList.toggle('has-error',showErrors&&!nameReady);$('#v15RespondentRole')?.closest('label')?.classList.toggle('has-error',showErrors&&!roleReady);$('#v15ConsentPanel')?.classList.toggle('has-error',showErrors&&!privacyReady);
  document.documentElement.dataset.vivaceRequiredComplete=complete?'1':'0';document.documentElement.dataset.vivaceMissingRequired=String(missingCount);
  const requirementState=`${complete?'1':'0'}:${missingCount}`;if(lastRequirementState!==requirementState){lastRequirementState=requirementState;document.dispatchEvent(new CustomEvent('vivace:requirements-changed',{detail:{complete,missing:missingCount}}))}
- const title=$('#v15ClosingTitle'),text=$('#v15ClosingText');if(title&&text){if(complete){title.textContent='השאלון מוכן לשליחה.';text.textContent='כל שאלות החובה ופרטי ממלא השאלון הושלמו.'}else{const count=Number(document.documentElement.dataset.vivaceMissingRequired);title.textContent=count===1?'נשאר פרט אחד להשלמה.':`נשארו ${count} פריטים להשלמה.`;text.textContent=count<=6?'לחץ על כל פריט חסר כדי לעבור אליו.':'נתחיל מהפריט החסר הראשון.'}}
  enhanceSubmit();renderMissingItems(missingItems);return{complete,missing,missingItems};
 }
 
@@ -351,7 +346,6 @@ function bind(){
   event.preventDefault();event.stopImmediatePropagation();
   const submit=$('#v9FinalSubmit');submit?.scrollIntoView({behavior:'smooth',block:'center'});$('#v9Send')?.focus();
  },true);
- $('#v15SaveDraft')?.addEventListener('click',()=>{persist();showToast('הטיוטה נשמרה במכשיר')});
  document.addEventListener('vivace:transcript-state-changed',()=>updateProgress());
  const recordingObserver=new MutationObserver(()=>{syncAudioConsent();updateProgress()});recordingObserver.observe(shell,{subtree:true,attributes:true,attributeFilter:['data-has-recording','data-transcript-status']});
  window.addEventListener('pagehide',()=>{activeStream?.getTracks().forEach(track=>track.stop())});
