@@ -50,39 +50,36 @@ function removePanel(questionId){const card=cardFor(questionId),result=card?.que
 function findRecordButton(questionId){const card=cardFor(questionId);if(!card)return null;return $('.record-button',card)||$$('button,[role="button"]',card).find(element=>/(הקלט|הקלטה|מיקרופון|record|microphone|\bmic\b)/i.test([clean(element.textContent),element.getAttribute('aria-label')||'',element.getAttribute('title')||'',String(element.className||''),element.dataset?.action||''].join(' ')))||null}
 
 function invalidate(questionId){const all=readApproved();if(all[questionId]){delete all[questionId];writeApproved(all)}}
-function wireRerecord(questionId){const result=panel(questionId),button=$(`[data-vivace-rerecord="${questionId}"]`,result);if(!button)return;button.onclick=()=>{const record=findRecordButton(questionId);if(record)record.click();else setPanel(questionId,'error','<div class="vivace-preview-error">לא מצאנו את כפתור ההקלטה. נסה לרענן את הדף.</div>')}}
-
-function renderProcessing(questionId,label,copy='זה יכול לקחת כמה שניות. אין צורך לעזוב את השאלה.'){
- setPanel(questionId,'processing',`<div class="vivace-preview-head"><span class="vivace-preview-badge">${escapeHtml(label)}</span></div><div class="vivace-preview-copy">${escapeHtml(copy)}</div>`)
+function renderProcessing(questionId){
+ setPanel(questionId,'processing','<div class="vivace-preview-head"><span class="vivace-preview-badge">מתמלל את ההקלטה…</span></div>')
 }
 
 function renderUnclear(questionId){
  invalidate(questionId);
- setPanel(questionId,'error','<div class="vivace-preview-head"><span class="vivace-preview-badge">לא נשמע דיבור ברור</span></div><div class="vivace-preview-copy">ההקלטה נשמרה במכשיר, אבל אי אפשר לאשר אותה כתשובה. הקלט אותה מחדש.</div><div class="vivace-preview-actions"><button type="button" class="is-primary" data-vivace-rerecord="'+questionId+'">הקלט מחדש</button></div>');
- wireRerecord(questionId)
+ setPanel(questionId,'error','<div class="vivace-preview-head"><span class="vivace-preview-badge">לא נשמע דיבור ברור</span></div><div class="vivace-preview-copy">אפשר להקליט מחדש בעזרת הכפתור למעלה.</div>');
 }
 
 function renderFailure(questionId,error){
  const message=String(error?.message||'');
- let title='לא הצלחנו לתמלל כרגע',copy='ההקלטה נשמרה במכשיר. אפשר לנסות שוב בלי להקליט מחדש.';
- if(message.includes('INVITE_MISSING')||message.includes('INVITE_REQUIRED')){title='נדרש קישור ההזמנה הרשמי';copy='ההקלטה נשמרה במכשיר, אבל התמלול פועל רק מתוך קישור ההזמנה של Vivace.'}
- else if(message.includes('ORIGIN_NOT_ALLOWED')||message.includes('HTTP_403')){title='התמלול לא זמין בקישור הבדיקה';copy='ההקלטה נשמרה במכשיר. התמלול יפעל בקישור הרשמי לאחר פרסום הגרסה.'}
- setPanel(questionId,'error',`<div class="vivace-preview-head"><span class="vivace-preview-badge">${escapeHtml(title)}</span></div><div class="vivace-preview-copy">${escapeHtml(copy)}</div><div class="vivace-preview-actions"><button type="button" class="is-secondary" data-vivace-retry="${questionId}">נסה תמלול שוב</button><button type="button" class="is-primary" data-vivace-rerecord="${questionId}">הקלט מחדש</button></div>`);
- const result=panel(questionId),retry=$(`[data-vivace-retry="${questionId}"]`,result);if(retry)retry.onclick=()=>{SEEN.delete(Number(questionId));void scan()};wireRerecord(questionId)
+ let title='התמלול לא הצליח',copy='אפשר לנסות שוב.',canRetry=true;
+ if(message.includes('INVITE_MISSING')||message.includes('INVITE_REQUIRED')){title='לא ניתן לתמלל בקישור הזה';copy='יש לפתוח את קישור ההזמנה הרשמי של Vivace.';canRetry=false}
+ else if(message.includes('ORIGIN_NOT_ALLOWED')||message.includes('HTTP_403')){title='התמלול לא זמין בקישור הבדיקה';copy='התמלול יפעל בקישור הרשמי.';canRetry=false}
+ const actions=canRetry?`<div class="vivace-preview-actions"><button type="button" class="is-secondary" data-vivace-retry="${questionId}">נסה שוב</button></div>`:'';
+ setPanel(questionId,'error',`<div class="vivace-preview-head"><span class="vivace-preview-badge">${escapeHtml(title)}</span></div><div class="vivace-preview-copy">${escapeHtml(copy)}</div>${actions}`);
+ const result=panel(questionId),retry=$(`[data-vivace-retry="${questionId}"]`,result);if(retry)retry.onclick=()=>{SEEN.delete(Number(questionId));void scan()}
 }
 
 function renderApproved(questionId,approved){
  const text=clean(approved?.text);if(!text)return;
- setPanel(questionId,'approved',`<div class="vivace-preview-head"><span class="vivace-preview-badge">תמלול אושר</span></div><div class="vivace-transcript-text">${escapeHtml(text)}</div><div class="vivace-preview-actions"><button type="button" class="is-secondary" data-vivace-edit="${questionId}">ערוך תמלול</button><button type="button" class="is-secondary" data-vivace-rerecord="${questionId}">הקלט מחדש</button></div>`);
- const result=panel(questionId),edit=$(`[data-vivace-edit="${questionId}"]`,result);if(edit)edit.onclick=()=>renderReview(questionId,approved.audioSha256||'',{transcript:text,source:approved.source||'user-approved'});wireRerecord(questionId)
+ setPanel(questionId,'approved',`<div class="vivace-preview-head"><span class="vivace-preview-badge">תמלול אושר</span></div><div class="vivace-transcript-text">${escapeHtml(text)}</div><div class="vivace-preview-actions"><button type="button" class="is-secondary" data-vivace-edit="${questionId}">ערוך תמלול</button></div>`);
+ const result=panel(questionId),edit=$(`[data-vivace-edit="${questionId}"]`,result);if(edit)edit.onclick=()=>renderReview(questionId,approved.audioSha256||'',{transcript:text,source:approved.source||'user-approved'})
 }
 
 function renderReview(questionId,hash,data){
  const initial=clean(data?.transcript);if(!initial){renderUnclear(questionId);return}
- setPanel(questionId,'review',`<div class="vivace-preview-head"><span class="vivace-preview-badge">התמלול מוכן לבדיקה</span></div><label class="vivace-transcript-label">זה מה שתומלל:<textarea class="vivace-transcript-editor" data-vivace-transcript="${questionId}" rows="3">${escapeHtml(initial)}</textarea></label><div class="vivace-preview-actions"><button type="button" class="is-primary" data-vivace-approve="${questionId}">התמלול נכון</button><button type="button" class="is-secondary" data-vivace-rerecord="${questionId}">הקלט מחדש</button></div><span class="vivace-preview-note">אפשר לתקן מילה או שתיים לפני האישור.</span>`);
+ setPanel(questionId,'review',`<label class="vivace-transcript-label">בדוק ותקן את התמלול<textarea class="vivace-transcript-editor" data-vivace-transcript="${questionId}" rows="3">${escapeHtml(initial)}</textarea></label><div class="vivace-preview-actions"><button type="button" class="is-primary" data-vivace-approve="${questionId}">אישור התמלול</button></div>`);
  const result=panel(questionId),approve=$(`[data-vivace-approve="${questionId}"]`,result),editor=$(`[data-vivace-transcript="${questionId}"]`,result);
  if(approve)approve.onclick=()=>{const text=clean(editor?.value);if(!text){editor?.focus();return}const all=readApproved();all[questionId]={questionId:Number(questionId),text,source:clean(data?.source||'gemini-preview'),audioSha256:hash,approvedAt:new Date().toISOString()};writeApproved(all);renderApproved(questionId,all[questionId])};
- wireRerecord(questionId)
 }
 
 async function requestPreview(record,hash,quality){
@@ -111,19 +108,18 @@ async function scan(){
    if(RECORDING.has(questionId)||(GENERATION.get(questionId)||0)!==generation){SEEN.delete(questionId);continue}
    if(approved[questionId]?.audioSha256===hash&&clean(approved[questionId]?.text)){if(SEEN.get(questionId)!==hash||cardFor(questionId)?.dataset.transcriptStatus!=='approved')renderApproved(questionId,approved[questionId]);SEEN.set(questionId,hash);continue}
    if(SEEN.get(questionId)===hash)continue;
-   SEEN.set(questionId,hash);invalidate(questionId);renderProcessing(questionId,'בודק את ההקלטה');
+   SEEN.set(questionId,hash);invalidate(questionId);renderProcessing(questionId);
    try{
     const quality=typeof window.__vivaceAnalyzeAudio==='function'?await window.__vivaceAnalyzeAudio(blob):null;
     if(RECORDING.has(questionId)||(GENERATION.get(questionId)||0)!==generation){SEEN.delete(questionId);continue}
     if(quality&&quality.usable===false){renderUnclear(questionId);continue}
-    renderProcessing(questionId,'מתמלל את ההקלטה');
     const result=await requestPreview(record,hash,quality);
     if(RECORDING.has(questionId)||(GENERATION.get(questionId)||0)!==generation){SEEN.delete(questionId);continue}
     if(result.status!=='ok'||!clean(result.transcript)){renderUnclear(questionId);continue}
     renderReview(questionId,hash,result)
    }catch(error){
     if(RECORDING.has(questionId)||(GENERATION.get(questionId)||0)!==generation){SEEN.delete(questionId);continue}
-    if(error?.name==='AbortError'){SEEN.delete(questionId);if(!RECORDING.has(questionId)&&!$('#v15PrivacyAck')?.checked)setPanel(questionId,'pending','<div class="vivace-preview-head"><span class="vivace-preview-badge">התמלול מושהה</span></div><div class="vivace-preview-copy">אישור ההקלטות בוטל. ההקלטה נשארה במכשיר ולא נשלחת לתמלול עד לאישור מחדש.</div>');continue}
+    if(error?.name==='AbortError'){SEEN.delete(questionId);if(!RECORDING.has(questionId)&&!$('#v15PrivacyAck')?.checked)setPanel(questionId,'pending','<div class="vivace-preview-head"><span class="vivace-preview-badge">התמלול מושהה</span></div><div class="vivace-preview-copy">אשר את ההקלטות כדי להמשיך.</div>');continue}
     console.error('Vivace preview failed',error);renderFailure(questionId,error)
    }
   }
@@ -149,8 +145,8 @@ window.fetch=async function(input,init){
  return nativeFetch(input,init)
 };
 
-document.addEventListener('vivace:recording-started',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;GENERATION.set(questionId,(GENERATION.get(questionId)||0)+1);RECORDING.add(questionId);if(activePreview?.questionId===questionId)activePreview.controller.abort();SEEN.delete(questionId);renderProcessing(questionId,'מקליט תשובה חדשה','אחרי העצירה התמלול החדש יופיע כאן.')});
-document.addEventListener('vivace:recording-saved',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;GENERATION.set(questionId,(GENERATION.get(questionId)||0)+1);RECORDING.delete(questionId);invalidate(questionId);SEEN.delete(questionId);renderProcessing(questionId,'ההקלטה נשמרה','מתחיל תמלול…');void scan()});
+document.addEventListener('vivace:recording-started',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;GENERATION.set(questionId,(GENERATION.get(questionId)||0)+1);RECORDING.add(questionId);if(activePreview?.questionId===questionId)activePreview.controller.abort();SEEN.delete(questionId);removePanel(questionId)});
+document.addEventListener('vivace:recording-saved',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;GENERATION.set(questionId,(GENERATION.get(questionId)||0)+1);RECORDING.delete(questionId);invalidate(questionId);SEEN.delete(questionId);renderProcessing(questionId);void scan()});
 document.addEventListener('vivace:recording-cancelled',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;GENERATION.set(questionId,(GENERATION.get(questionId)||0)+1);RECORDING.delete(questionId);SEEN.delete(questionId);if(event.detail?.hadPrevious)void scan();else removePanel(questionId)});
 document.addEventListener('vivace:recording-deleted',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;GENERATION.set(questionId,(GENERATION.get(questionId)||0)+1);RECORDING.delete(questionId);if(activePreview?.questionId===questionId)activePreview.controller.abort();invalidate(questionId);SEEN.delete(questionId);removePanel(questionId)});
 document.addEventListener('change',event=>{if(event.target?.id!=='v15PrivacyAck')return;if(event.target.checked)void scan();else{activePreview?.controller.abort();SEEN.clear()}});
