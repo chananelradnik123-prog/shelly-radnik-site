@@ -80,7 +80,10 @@ function refreshState(message){
  if(alreadySubmitted){setButton(btn,false);status.textContent='✓ השאלון כבר נשלח מהסשן הזה.';status.style.color='';return}
  if(document.documentElement.dataset.vivaceRequiredComplete==='0'){
   const missing=Number(document.documentElement.dataset.vivaceMissingRequired||0);
-  setButton(btn,false);status.textContent=`יש להשלים ${missing} פריטי חובה לפני השליחה.`;status.style.color='#ffd8cc';return;
+  setButton(btn,false);
+  status.textContent=document.querySelector('#v15SubmitMissing')?'':`יש להשלים ${missing} פריטי חובה לפני השליחה.`;
+  status.style.color=status.textContent?'#ffd8cc':'';
+  return;
  }
  setButton(btn,inviteValid);
  if(message){status.textContent=message;status.style.color=inviteValid?'':'#ffd8cc';return}
