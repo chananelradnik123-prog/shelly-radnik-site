@@ -12,6 +12,7 @@ const $=(selector,root=document)=>root.querySelector(selector);
 const $$=(selector,root=document)=>Array.from(root.querySelectorAll(selector));
 let saveTimer=null;
 let lastRequirementState='';
+let validationShown=false;
 let activeRecorder=null;
 let activeStream=null;
 let activeChunks=[];
@@ -314,11 +315,13 @@ function syncAudioConsent(){
 }
 
 function updateProgress({showErrors=false}={}){
+ if(showErrors)validationShown=true;
+ const displayErrors=validationShown;
  const cards=$$('.v15-question'),required=cards.filter(card=>REQUIRED_IDS.has(card.dataset.questionId)),answeredRequired=required.filter(isAnswered),missing=required.filter(card=>!isAnswered(card));
- cards.forEach(card=>{const ok=isAnswered(card),recorded=card.dataset.hasRecording==='true';card.classList.toggle('is-answered',ok);if(showErrors&&REQUIRED_IDS.has(card.dataset.questionId)&&!ok){card.classList.add('has-error');$('.v15-error',card).textContent=recorded?'צריך לבדוק ולאשר את התמלול לפני השליחה.':'צריך להשלים את השאלה לפני השליחה.'}else{card.classList.remove('has-error');$('.v15-error',card).textContent=''}});
+ cards.forEach(card=>{const ok=isAnswered(card),recorded=card.dataset.hasRecording==='true';card.classList.toggle('is-answered',ok);if(displayErrors&&REQUIRED_IDS.has(card.dataset.questionId)&&!ok){card.classList.add('has-error');$('.v15-error',card).textContent=recorded?'צריך לבדוק ולאשר את התמלול לפני השליחה.':'צריך להשלים את השאלה לפני השליחה.'}else{card.classList.remove('has-error');$('.v15-error',card).textContent=''}});
  const progressText=$('#v15ProgressText'),progressBar=$('#v15ProgressBar');if(progressText)progressText.textContent=`${answeredRequired.length} מתוך 14`;if(progressBar)progressBar.style.width=`${Math.round(answeredRequired.length/required.length*100)}%`;
  const nameReady=Boolean($('#v15RespondentName')?.value.trim()),roleReady=Boolean($('#v15RespondentRole')?.value.trim()),hasRecordings=cards.some(card=>card.dataset.hasRecording==='true'),privacyReady=!hasRecordings||Boolean($('#v15PrivacyAck')?.checked),missingItems=currentMissingItems(),missingCount=missingItems.length,complete=missingCount===0;
- $('#v15RespondentName')?.closest('label')?.classList.toggle('has-error',showErrors&&!nameReady);$('#v15RespondentRole')?.closest('label')?.classList.toggle('has-error',showErrors&&!roleReady);$('#v15ConsentPanel')?.classList.toggle('has-error',showErrors&&!privacyReady);
+ $('#v15RespondentName')?.closest('label')?.classList.toggle('has-error',displayErrors&&!nameReady);$('#v15RespondentRole')?.closest('label')?.classList.toggle('has-error',displayErrors&&!roleReady);$('#v15ConsentPanel')?.classList.toggle('has-error',displayErrors&&!privacyReady);
  document.documentElement.dataset.vivaceRequiredComplete=complete?'1':'0';document.documentElement.dataset.vivaceMissingRequired=String(missingCount);
  const requirementState=`${complete?'1':'0'}:${missingCount}`;if(lastRequirementState!==requirementState){lastRequirementState=requirementState;document.dispatchEvent(new CustomEvent('vivace:requirements-changed',{detail:{complete,missing:missingCount}}))}
  enhanceSubmit();renderMissingItems(missingItems);return{complete,missing,missingItems};
