@@ -254,7 +254,8 @@ function currentMissingItems(){
  $$('.v15-question').filter(card=>REQUIRED_IDS.has(card.dataset.questionId)&&!isAnswered(card)).forEach(card=>{
   const id=Number(card.dataset.questionId),recorded=card.dataset.hasRecording==='true',title=card.dataset.questionTitle||`שאלה ${id}`,state=card.dataset.transcriptStatus||'';
   const transcriptLabel=state==='processing'?`שאלה ${id}: התמלול עדיין בעיבוד`:state==='review'?`שאלה ${id}: צריך לבדוק ולאשר את התמלול`:state==='error'?`שאלה ${id}: צריך לנסות תמלול או הקלטה מחדש`:state==='pending'?`שאלה ${id}: התמלול ממתין לאישור ההקלטות`:`שאלה ${id}: צריך לתמלל ולאשר את ההקלטה`;
-  items.push({kind:'question',label:recorded?transcriptLabel:`שאלה ${id}: ${title}`,container:card,target:recorded?($('.vivace-preview button',card)||$('.record-button',card)):$('input:not([type="hidden"]),textarea,select,.record-button',card)});
+  const answerTarget=$('.v15-answer input:not([type="hidden"]),.v15-answer textarea,.v15-answer select',card);
+  items.push({kind:'question',label:recorded?transcriptLabel:`שאלה ${id}: ${title}`,container:card,target:recorded?($('.vivace-preview button',card)||$('.record-button',card)):(answerTarget||$('.record-button',card))});
  });
  const name=$('#v15RespondentName'),role=$('#v15RespondentRole'),consent=$('#v15PrivacyAck'),hasRecordings=$$('.v15-question').some(card=>card.dataset.hasRecording==='true');
  if(!name?.value.trim())items.push({kind:'identity',label:'שם ממלא השאלון',container:name?.closest('label'),target:name});
