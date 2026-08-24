@@ -229,6 +229,25 @@ function checkedValues(name){return $$(`input[name="${name}"]:checked`).map(inpu
 function fieldValue(name){return $(`[name="${name}"]`)?.value?.trim()||''}
 function nonNegativeInteger(value){return /^\d+$/.test(String(value||''))}
 
+function incompleteAnswerTarget(card){
+ const controls=$$('.v15-answer input:not([type="hidden"]),.v15-answer textarea,.v15-answer select',card).filter(control=>!control.disabled&&!control.closest('[hidden]'));
+ for(const control of controls){
+  if(control.type==='radio'||control.type==='checkbox'){
+   const group=controls.filter(item=>item.type===control.type&&item.name===control.name);
+   if(!group.some(item=>item.checked))return control;
+   continue;
+  }
+  if(!String(control.value||'').trim())return control;
+ }
+ return controls[0]||$('.record-button',card);
+}
+
+function missingQuestionLabel(id,title,target){
+ const fieldLabels={pilot_owner_name:'שם האחראי',pilot_owner_role:'תפקיד האחראי',success_metric:'מדד הצלחה',success_target:'יעד מספרי'};
+ const fieldLabel=fieldLabels[target?.name]||String(target?.placeholder||'').split('—')[0].trim();
+ return fieldLabel&&!fieldLabel.startsWith('לדוגמה')?`שאלה ${id}: ${fieldLabel}`:`שאלה ${id}: ${title}`;
+}
+
 function isAnswered(card){
  const id=Number(card.dataset.questionId);
  if(card.dataset.hasRecording==='true')return typeof window.__vivaceIsTranscriptApproved==='function'?window.__vivaceIsTranscriptApproved(id):card.dataset.transcriptStatus==='approved';
@@ -255,8 +274,8 @@ function currentMissingItems(){
  $$('.v15-question').filter(card=>REQUIRED_IDS.has(card.dataset.questionId)&&!isAnswered(card)).forEach(card=>{
   const id=Number(card.dataset.questionId),recorded=card.dataset.hasRecording==='true',title=card.dataset.questionTitle||`שאלה ${id}`,state=card.dataset.transcriptStatus||'';
   const transcriptLabel=state==='processing'?`שאלה ${id}: התמלול עדיין בעיבוד`:state==='review'?`שאלה ${id}: צריך לבדוק ולאשר את התמלול`:state==='error'?`שאלה ${id}: צריך לנסות תמלול או הקלטה מחדש`:state==='pending'?`שאלה ${id}: התמלול ממתין לאישור ההקלטות`:`שאלה ${id}: צריך לתמלל ולאשר את ההקלטה`;
-  const answerTarget=$('.v15-answer input:not([type="hidden"]),.v15-answer textarea,.v15-answer select',card);
-  items.push({kind:'question',label:recorded?transcriptLabel:`שאלה ${id}: ${title}`,container:card,target:recorded?($('.vivace-preview button',card)||$('.record-button',card)):(answerTarget||$('.record-button',card))});
+  const answerTarget=incompleteAnswerTarget(card),target=recorded?($('.vivace-preview button',card)||$('.record-button',card)):answerTarget;
+  items.push({kind:'question',label:recorded?transcriptLabel:missingQuestionLabel(id,title,target),container:card,target});
  });
  const name=$('#v15RespondentName'),role=$('#v15RespondentRole'),consent=$('#v15PrivacyAck'),hasRecordings=$$('.v15-question').some(card=>card.dataset.hasRecording==='true');
  if(!name?.value.trim())items.push({kind:'identity',label:'שם ממלא השאלון',container:name?.closest('label'),target:name});
