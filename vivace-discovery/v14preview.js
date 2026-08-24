@@ -9,6 +9,7 @@ const APPROVED_KEY='vivace-approved-preview-transcripts-v1';
 const APPROVED_ANSWER='תמלול שאושר על ידי ממלא השאלון';
 const SEEN=new Map();
 const RECORDING=new Set();
+const GENERATION=new Map();
 const nativeFetch=window.fetch.bind(window);
 let running=false;
 let activePreview=null;
@@ -105,15 +106,19 @@ async function scan(){
   for(const record of recordings){
    const questionId=Number(record?.questionId||0),blob=record?.blob;if(!questionId||!blob)continue;
    if(RECORDING.has(questionId))continue;
+   const generation=GENERATION.get(questionId)||0;
    let hash='';try{hash=await sha256(blob)}catch{continue}
+   if(RECORDING.has(questionId)||(GENERATION.get(questionId)||0)!==generation){SEEN.delete(questionId);continue}
    if(approved[questionId]?.audioSha256===hash&&clean(approved[questionId]?.text)){if(SEEN.get(questionId)!==hash||cardFor(questionId)?.dataset.transcriptStatus!=='approved')renderApproved(questionId,approved[questionId]);SEEN.set(questionId,hash);continue}
    if(SEEN.get(questionId)===hash)continue;
    SEEN.set(questionId,hash);invalidate(questionId);renderProcessing(questionId,'בודק את ההקלטה');
    try{
     const quality=typeof window.__vivaceAnalyzeAudio==='function'?await window.__vivaceAnalyzeAudio(blob):null;
+    if(RECORDING.has(questionId)||(GENERATION.get(questionId)||0)!==generation){SEEN.delete(questionId);continue}
     if(quality&&quality.usable===false){renderUnclear(questionId);continue}
     renderProcessing(questionId,'מתמלל את ההקלטה');
     const result=await requestPreview(record,hash,quality);
+    if(RECORDING.has(questionId)||(GENERATION.get(questionId)||0)!==generation){SEEN.delete(questionId);continue}
     if(result.status!=='ok'||!clean(result.transcript)){renderUnclear(questionId);continue}
     renderReview(questionId,hash,result)
    }catch(error){
@@ -143,10 +148,10 @@ window.fetch=async function(input,init){
  return nativeFetch(input,init)
 };
 
-document.addEventListener('vivace:recording-started',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;RECORDING.add(questionId);if(activePreview?.questionId===questionId)activePreview.controller.abort();SEEN.delete(questionId);renderProcessing(questionId,'מקליט תשובה חדשה','אחרי העצירה התמלול החדש יופיע כאן.')});
-document.addEventListener('vivace:recording-saved',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;RECORDING.delete(questionId);invalidate(questionId);SEEN.delete(questionId);renderProcessing(questionId,'ההקלטה נשמרה','מתחיל תמלול…');void scan()});
-document.addEventListener('vivace:recording-cancelled',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;RECORDING.delete(questionId);SEEN.delete(questionId);void scan()});
-document.addEventListener('vivace:recording-deleted',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;RECORDING.delete(questionId);if(activePreview?.questionId===questionId)activePreview.controller.abort();invalidate(questionId);SEEN.delete(questionId);removePanel(questionId)});
+document.addEventListener('vivace:recording-started',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;GENERATION.set(questionId,(GENERATION.get(questionId)||0)+1);RECORDING.add(questionId);if(activePreview?.questionId===questionId)activePreview.controller.abort();SEEN.delete(questionId);renderProcessing(questionId,'מקליט תשובה חדשה','אחרי העצירה התמלול החדש יופיע כאן.')});
+document.addEventListener('vivace:recording-saved',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;GENERATION.set(questionId,(GENERATION.get(questionId)||0)+1);RECORDING.delete(questionId);invalidate(questionId);SEEN.delete(questionId);renderProcessing(questionId,'ההקלטה נשמרה','מתחיל תמלול…');void scan()});
+document.addEventListener('vivace:recording-cancelled',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;GENERATION.set(questionId,(GENERATION.get(questionId)||0)+1);RECORDING.delete(questionId);SEEN.delete(questionId);if(event.detail?.hadPrevious)void scan();else removePanel(questionId)});
+document.addEventListener('vivace:recording-deleted',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;GENERATION.set(questionId,(GENERATION.get(questionId)||0)+1);RECORDING.delete(questionId);if(activePreview?.questionId===questionId)activePreview.controller.abort();invalidate(questionId);SEEN.delete(questionId);removePanel(questionId)});
 document.addEventListener('change',event=>{if(event.target?.id!=='v15PrivacyAck')return;if(event.target.checked)void scan();else{activePreview?.controller.abort();SEEN.clear()}});
 
 setInterval(()=>void scan(),1400);
