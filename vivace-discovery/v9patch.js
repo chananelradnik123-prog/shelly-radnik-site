@@ -15,10 +15,17 @@ function cardData(card,i){
  const vals=[];
  $$('[data-field-id],input,textarea,select',card).forEach(el=>{if((el.type==='checkbox'||el.type==='radio')&&!el.checked)return;const v=el.value!==undefined?String(el.value):'';if(v.trim())vals.push({name:el.dataset?.fieldId||el.name||el.getAttribute('aria-label')||el.placeholder||'',value:v.trim()})});
  $$('.selected,[aria-checked="true"],.checked,.option-on,.marker-on',card).forEach(el=>{const v=text(el.closest('button,label,.cap-card,.choice,td')||el);if(v&&v.length<220&&!vals.some(x=>x.value===v))vals.push({name:'בחירה',value:v})});
+ if(i===0){
+  const respondentName=$('#v15RespondentName')?.value?.trim()||'';
+  const respondentRole=$('#v15RespondentRole')?.value?.trim()||'';
+  if(respondentName)vals.push({name:'שם ממלא השאלון',value:respondentName});
+  if(respondentRole)vals.push({name:'תפקיד ממלא השאלון',value:respondentRole});
+ }
  const q=card.dataset.questionTitle||text($('.qtitle,.question-title,.q-title,h2,h3',card))||`שאלה ${i+1}`;
  return {number:Number(card.dataset.questionId)||i+1,question:q,answers:vals};
 }
-async function getRecordings(){return new Promise(resolve=>{try{const req=indexedDB.open(AUDIO_DB,1);req.onerror=()=>resolve([]);req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains(AUDIO_STORE))req.result.createObjectStore(AUDIO_STORE,{keyPath:'questionId'})};req.onsuccess=()=>{const db=req.result;try{const tx=db.transaction(AUDIO_STORE,'readonly'),r=tx.objectStore(AUDIO_STORE).getAll();r.onsuccess=()=>{db.close();resolve(r.result||[])};r.onerror=()=>{db.close();resolve([])}}catch{db.close();resolve([])}}}catch{resolve([])}})}
+function activeRecording(rec){const ids=window.__vivaceActiveQuestionIds;return !Array.isArray(ids)||ids.includes(Number(rec?.questionId))}
+async function getRecordings(){if(window.__vivaceAudioEnabled!==true)return[];return new Promise(resolve=>{try{const req=indexedDB.open(AUDIO_DB,1);req.onerror=()=>resolve([]);req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains(AUDIO_STORE))req.result.createObjectStore(AUDIO_STORE,{keyPath:'questionId'})};req.onsuccess=()=>{const db=req.result;try{const tx=db.transaction(AUDIO_STORE,'readonly'),r=tx.objectStore(AUDIO_STORE).getAll();r.onsuccess=()=>{db.close();resolve((r.result||[]).filter(activeRecording))};r.onerror=()=>{db.close();resolve([])}}catch{db.close();resolve([])}}}catch{resolve([])}})}
 async function api(body){
  const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json','x-vivace-form':FORM_HEADER},body:JSON.stringify(body)});
  let data={};try{data=await r.json()}catch{}
@@ -51,7 +58,7 @@ function friendlyError(e){
  return'לא הצלחנו להשלים את השליחה. כל המידע עדיין שמור במכשיר.';
 }
 async function sendAll(btn,status){
- btn.disabled=true;const old=btn.textContent;btn.textContent='שולח…';status.textContent='אוסף תשובות והקלטות…';
+ btn.disabled=true;const old=btn.textContent;btn.textContent='שולח…';status.textContent=window.__vivaceAudioEnabled===true?'אוסף תשובות והקלטות…':'אוסף תשובות…';
  try{
    const cards=getCards(),questions=cards.map(cardData),recordings=await getRecordings();
    const meta=recordings.map(r=>({questionId:Number(r.questionId),mimeType:r.mimeType||r.blob?.type||'audio/webm',size:r.blob?.size||0}));
