@@ -6,6 +6,7 @@ const COMPLETED_KEY='vivace-submission-complete-v1';
 const CLIENT_SESSION_KEY='vivace-client-session-key-v1';
 const INVITE_FIELD='__vivace_invite_token';
 const SESSION_FIELD='__vivace_client_session';
+const PRIVACY_FIELD='__vivace_privacy_ack';
 const nativeFetch=window.fetch.bind(window);
 let inviteToken='';
 let inviteValid=false;
@@ -23,11 +24,12 @@ function validFormat(v){return /^[0-9a-f]{64}$/i.test(String(v||''))}
 function validClientSession(v){const s=String(v||'');return s.length>=16&&s.length<=128&&/^[A-Za-z0-9._:-]+$/.test(s)}
 function syntheticError(code,status=403){return Promise.resolve(new Response(JSON.stringify({error:code}),{status,headers:{'content-type':'application/json'}}))}
 function decorateQuestions(input){
- const hidden=new Set([INVITE_FIELD,SESSION_FIELD,'__vivace_privacy_ack']);
+ const hidden=new Set([INVITE_FIELD,SESSION_FIELD,PRIVACY_FIELD]);
  const questions=Array.isArray(input)?input.map(q=>({...q,answers:Array.isArray(q?.answers)?q.answers.filter(a=>!hidden.has(a?.name)).map(a=>({...a})):[]})):[];
  if(!questions.length)questions.push({number:1,question:'שאלה 1',answers:[]});
  questions[0].answers.push({name:INVITE_FIELD,value:inviteToken});
  questions[0].answers.push({name:SESSION_FIELD,value:clientSessionKey});
+ if(document.querySelector('#v15PrivacyAck')?.checked)questions[0].answers.push({name:PRIVACY_FIELD,value:'gemini-free-no-sensitive-v1'});
  return questions;
 }
 function markCompleted(){
@@ -76,6 +78,13 @@ function refreshState(message){
  const btn=document.querySelector('#v9Send'),status=document.querySelector('#v9Status');
  if(!btn||!status)return;
  if(alreadySubmitted){setButton(btn,false);status.textContent='✓ השאלון כבר נשלח מהסשן הזה.';status.style.color='';return}
+ if(document.documentElement.dataset.vivaceRequiredComplete==='0'){
+  const missing=Number(document.documentElement.dataset.vivaceMissingRequired||0);
+  setButton(btn,false);
+  status.textContent=document.querySelector('#v15SubmitMissing')?'':`יש להשלים ${missing} פריטי חובה לפני השליחה.`;
+  status.style.color=status.textContent?'#ffd8cc':'';
+  return;
+ }
  setButton(btn,inviteValid);
  if(message){status.textContent=message;status.style.color=inviteValid?'':'#ffd8cc';return}
  if(!inviteValid){status.textContent='קישור ההזמנה חסר, פג תוקף או אינו תקף.';status.style.color='#ffd8cc';return}
@@ -115,5 +124,6 @@ function boot(){
  setTimeout(()=>{void tryBind()},500);
  setTimeout(()=>{void tryBind()},1500);
 }
+document.addEventListener('vivace:requirements-changed',()=>refreshState());
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();

@@ -1,30 +1,156 @@
 (()=>{'use strict';
-const AUDIO_DB='vivace-owner-discovery-audio-v1',AUDIO_STORE='recordings';
+
+const AUDIO_DB='vivace-owner-discovery-audio-v1';
+const AUDIO_STORE='recordings';
 const PREVIEW_API='https://eadljasmuqnzcrfudsib.supabase.co/functions/v1/vivace-audio-preview';
 const SUBMIT_API='/functions/v1/vivace-discovery-submit';
 const FORM_HEADER='owner-discovery-v1';
 const APPROVED_KEY='vivace-approved-preview-transcripts-v1';
+const APPROVED_ANSWER='תמלול שאושר על ידי ממלא השאלון';
 const SEEN=new Map();
+const RECORDING=new Set();
+const GENERATION=new Map();
 const nativeFetch=window.fetch.bind(window);
 let running=false;
-const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>Array.from(r.querySelectorAll(s));
-const clean=v=>String(v||'').replace(/\s+/g,' ').trim();
+let activePreview=null;
+
+const $=(selector,root=document)=>root.querySelector(selector);
+const $$=(selector,root=document)=>Array.from(root.querySelectorAll(selector));
+const clean=value=>String(value||'').replace(/\s+/g,' ').trim();
+
 function readApproved(){try{return JSON.parse(localStorage.getItem(APPROVED_KEY)||'{}')||{}}catch{return{}}}
-function writeApproved(v){try{localStorage.setItem(APPROVED_KEY,JSON.stringify(v))}catch{}}
-async function getRecordings(){if(typeof window.__vivaceGetLocalRecordings==='function')return await window.__vivaceGetLocalRecordings();return await new Promise(resolve=>{try{const req=indexedDB.open(AUDIO_DB,1);req.onerror=()=>resolve([]);req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains(AUDIO_STORE))req.result.createObjectStore(AUDIO_STORE,{keyPath:'questionId'})};req.onsuccess=()=>{const db=req.result;try{const tx=db.transaction(AUDIO_STORE,'readonly'),r=tx.objectStore(AUDIO_STORE).getAll();r.onsuccess=()=>{db.close();resolve(r.result||[])};r.onerror=()=>{db.close();resolve([])}}catch{db.close();resolve([])}}}catch{resolve([])}})}
-async function sha256(blob){const bytes=await blob.arrayBuffer(),d=await crypto.subtle.digest('SHA-256',bytes);return [...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,'0')).join('')}
-function cardFor(qid){return document.querySelector(`[data-question-id="${qid}"]`)||document.querySelector(`#question-${qid}`)||$$('.interactive-question,[data-question-id]')[qid-1]||null}
-function panel(qid){const card=cardFor(qid);if(!card)return null;let p=$(`.vivace-preview[data-qid="${qid}"]`,card);if(!p){p=document.createElement('div');p.className='vivace-preview';p.dataset.qid=String(qid);p.dir='rtl';p.style.cssText='margin-top:12px;padding:13px 14px;border:1px solid rgba(20,57,45,.18);border-radius:14px;background:#f8f5ee;color:#173027;font:14px/1.55 Arial,sans-serif;text-align:right';card.appendChild(p)}return p}
-function setPanel(qid,html){const p=panel(qid);if(p)p.innerHTML=html}
-function findRecordButton(qid){const card=cardFor(qid);if(!card)return null;return $$('button,[role="button"]',card).find(el=>/(הקלט|הקלטה|מיקרופון|record|microphone|\bmic\b)/i.test([clean(el.textContent),el.getAttribute('aria-label')||'',el.getAttribute('title')||'',String(el.className||''),el.dataset?.action||''].join(' ')))||null}
-function invalidate(qid){const all=readApproved();if(all[qid]){delete all[qid];writeApproved(all)}}
-async function requestPreview(rec,hash,quality){const qid=Number(rec.questionId||0),blob=rec.blob;if(!qid||!blob)throw new Error('MISSING_AUDIO');const invite=sessionStorage.getItem('vivace-invite-token-v1')||'';if(!invite)throw new Error('INVITE_MISSING');const fd=new FormData();fd.append('audio',blob,`Q${String(qid).padStart(2,'0')}.webm`);fd.append('questionId',String(qid));fd.append('invite',invite);fd.append('sha256',hash);fd.append('quality',JSON.stringify(quality||{}));const r=await nativeFetch(PREVIEW_API,{method:'POST',headers:{'x-vivace-form':FORM_HEADER},body:fd,cache:'no-store'});let data={};try{data=await r.json()}catch{}if(!r.ok||!data.ok){const e=new Error(data.error||`HTTP_${r.status}`);e.data=data;throw e}return data}
-function escapeHtml(s){return String(s).replace(/[&<>\"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
-function wireRerecord(qid){const p=panel(qid),b=$(`[data-vivace-rerecord="${qid}"]`,p);if(b)b.onclick=()=>{invalidate(qid);const recBtn=findRecordButton(qid);if(recBtn){recBtn.click();setPanel(qid,'<b>מקליט מחדש…</b> אחרי העצירה יופיע תמלול חדש כאן.')}else{setPanel(qid,'<b style="color:#8b2f25">לחץ שוב על כפתור ההקלטה של השאלה.</b>')}}}
-function unclear(qid){invalidate(qid);setPanel(qid,`<b style="color:#8b2f25">לא נשמע דיבור ברור.</b><div style="margin-top:5px">ההקלטה לא תישלח כתשובה ולא תישלח ל-Gemini. יש להקליט מחדש.</div><button type="button" data-vivace-rerecord="${qid}" style="margin-top:9px;border:0;border-radius:999px;padding:9px 14px;background:#8b2f25;color:#fff;font-weight:700">הקלט מחדש</button>`);wireRerecord(qid)}
-function renderResult(qid,hash,data){const text=clean(data.transcript);if(data.status!=='ok'||!text){unclear(qid);return}setPanel(qid,`<div style="font-size:12px;opacity:.7;margin-bottom:5px">זה מה ששמעתי:</div><div style="font-size:15px;font-weight:700">${escapeHtml(text)}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button type="button" data-vivace-approve="${qid}" style="border:0;border-radius:999px;padding:9px 14px;background:#14392D;color:#fff;font-weight:700">נכון</button><button type="button" data-vivace-rerecord="${qid}" style="border:0;border-radius:999px;padding:9px 14px;background:#e6ded1;color:#173027;font-weight:700">הקלט מחדש</button></div>`);const p=panel(qid),approve=$(`[data-vivace-approve="${qid}"]`,p);if(approve)approve.onclick=()=>{const all=readApproved();all[qid]={questionId:qid,text,source:clean(data.source||'gemini-preview'),audioSha256:hash,approvedAt:new Date().toISOString()};writeApproved(all);setPanel(qid,`<div style="font-size:12px;opacity:.7;margin-bottom:5px">תמלול מאושר ✓</div><div style="font-size:15px;font-weight:700">${escapeHtml(text)}</div><button type="button" data-vivace-rerecord="${qid}" style="margin-top:9px;border:0;border-radius:999px;padding:8px 12px;background:#e6ded1;color:#173027;font-weight:700">הקלט מחדש</button>`);wireRerecord(qid)};wireRerecord(qid)}
-async function scan(){if(running)return;running=true;try{const recordings=await getRecordings(),approved=readApproved();for(const rec of recordings){const qid=Number(rec?.questionId||0),blob=rec?.blob;if(!qid||!blob)continue;let hash='';try{hash=await sha256(blob)}catch{continue}if(SEEN.get(qid)===hash)continue;SEEN.set(qid,hash);if(approved[qid]?.audioSha256===hash){setPanel(qid,`<div style="font-size:12px;opacity:.7;margin-bottom:5px">תמלול מאושר ✓</div><div style="font-size:15px;font-weight:700">${escapeHtml(clean(approved[qid].text))}</div><button type="button" data-vivace-rerecord="${qid}" style="margin-top:9px;border:0;border-radius:999px;padding:8px 12px;background:#e6ded1;color:#173027;font-weight:700">הקלט מחדש</button>`);wireRerecord(qid);continue}invalidate(qid);setPanel(qid,'<b>בודק את ההקלטה…</b>');try{const quality=typeof window.__vivaceAnalyzeAudio==='function'?await window.__vivaceAnalyzeAudio(blob):null;if(quality&&quality.usable===false){console.info('Vivace preview blocked silent audio',{questionId:qid,...quality});unclear(qid);continue}setPanel(qid,'<b>מתמלל את ההקלטה…</b>');const result=await requestPreview(rec,hash,quality);renderResult(qid,hash,result)}catch(e){console.error('Vivace preview failed',e);setPanel(qid,'<b style="color:#8b2f25">לא הצלחנו לבדוק את ההקלטה.</b><div style="margin-top:5px">כדי למנוע תמלול שגוי, יש להקליט מחדש או לנסות שוב מאוחר יותר.</div>')}}}finally{running=false}}
+function writeApproved(value){try{localStorage.setItem(APPROVED_KEY,JSON.stringify(value))}catch{}}
+function escapeHtml(value){return String(value).replace(/[&<>\"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char]))}
+function activeRecording(record){const ids=window.__vivaceActiveQuestionIds;return !Array.isArray(ids)||ids.includes(Number(record?.questionId))}
+
+async function getRecordings(){
+ if(typeof window.__vivaceGetLocalRecordings==='function')return (await window.__vivaceGetLocalRecordings()).filter(activeRecording);
+ return await new Promise(resolve=>{try{const request=indexedDB.open(AUDIO_DB,1);request.onerror=()=>resolve([]);request.onupgradeneeded=()=>{if(!request.result.objectStoreNames.contains(AUDIO_STORE))request.result.createObjectStore(AUDIO_STORE,{keyPath:'questionId'})};request.onsuccess=()=>{const db=request.result;try{const result=db.transaction(AUDIO_STORE,'readonly').objectStore(AUDIO_STORE).getAll();result.onsuccess=()=>{db.close();resolve((result.result||[]).filter(activeRecording))};result.onerror=()=>{db.close();resolve([])}}catch{db.close();resolve([])}}}catch{resolve([])}})
+}
+
+async function sha256(blob){const bytes=await blob.arrayBuffer(),digest=await crypto.subtle.digest('SHA-256',bytes);return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('')}
+function cardFor(questionId){return document.querySelector(`[data-question-id="${questionId}"]`)||document.querySelector(`#question-${questionId}`)||$$('.interactive-question,[data-question-id]')[Number(questionId)-1]||null}
+
+function setState(questionId,state){
+ const card=cardFor(questionId);if(!card)return;
+ const next=String(state||'');if(card.dataset.transcriptStatus===next)return;
+ if(next)card.dataset.transcriptStatus=next;else delete card.dataset.transcriptStatus;
+ document.dispatchEvent(new CustomEvent('vivace:transcript-state-changed',{detail:{questionId:Number(questionId),state:next}}));
+}
+
+function panel(questionId){
+ const card=cardFor(questionId);if(!card)return null;
+ let result=$(`.vivace-preview[data-qid="${questionId}"]`,card);
+ if(!result){result=document.createElement('section');result.className='vivace-preview';result.dataset.qid=String(questionId);result.dir='rtl';result.setAttribute('aria-live','polite');const recorder=$('.audio-recorder',card);if(recorder)recorder.insertAdjacentElement('afterend',result);else card.appendChild(result)}
+ return result;
+}
+
+function setPanel(questionId,state,html){const result=panel(questionId);if(!result)return;result.className=`vivace-preview is-${state}`;result.innerHTML=html;setState(questionId,state)}
+function removePanel(questionId){const card=cardFor(questionId),result=card?.querySelector(`.vivace-preview[data-qid="${questionId}"]`);result?.remove();setState(questionId,'')}
+function findRecordButton(questionId){const card=cardFor(questionId);if(!card)return null;return $('.record-button',card)||$$('button,[role="button"]',card).find(element=>/(הקלט|הקלטה|מיקרופון|record|microphone|\bmic\b)/i.test([clean(element.textContent),element.getAttribute('aria-label')||'',element.getAttribute('title')||'',String(element.className||''),element.dataset?.action||''].join(' ')))||null}
+
+function invalidate(questionId){const all=readApproved();if(all[questionId]){delete all[questionId];writeApproved(all)}}
+function renderProcessing(questionId){
+ setPanel(questionId,'processing','<div class="vivace-preview-head"><span class="vivace-preview-badge">מתמלל את ההקלטה…</span></div>')
+}
+
+function renderUnclear(questionId){
+ invalidate(questionId);
+ setPanel(questionId,'error','<div class="vivace-preview-head"><span class="vivace-preview-badge">לא נשמע דיבור ברור</span></div><div class="vivace-preview-copy">אפשר להקליט מחדש בעזרת הכפתור למעלה.</div>');
+}
+
+function renderFailure(questionId,error){
+ const message=String(error?.message||'');
+ let title='התמלול לא הצליח',copy='אפשר לנסות שוב.',canRetry=true;
+ if(message.includes('INVITE_MISSING')||message.includes('INVITE_REQUIRED')){title='לא ניתן לתמלל בקישור הזה';copy='יש לפתוח את קישור ההזמנה הרשמי של Vivace.';canRetry=false}
+ else if(message.includes('ORIGIN_NOT_ALLOWED')||message.includes('HTTP_403')){title='התמלול לא זמין בקישור הבדיקה';copy='התמלול יפעל בקישור הרשמי.';canRetry=false}
+ const actions=canRetry?`<div class="vivace-preview-actions"><button type="button" class="is-secondary" data-vivace-retry="${questionId}">נסה שוב</button></div>`:'';
+ setPanel(questionId,'error',`<div class="vivace-preview-head"><span class="vivace-preview-badge">${escapeHtml(title)}</span></div><div class="vivace-preview-copy">${escapeHtml(copy)}</div>${actions}`);
+ const result=panel(questionId),retry=$(`[data-vivace-retry="${questionId}"]`,result);if(retry)retry.onclick=()=>{SEEN.delete(Number(questionId));void scan()}
+}
+
+function renderApproved(questionId,approved){
+ const text=clean(approved?.text);if(!text)return;
+ setPanel(questionId,'approved',`<div class="vivace-preview-head"><span class="vivace-preview-badge">תמלול אושר</span></div><div class="vivace-transcript-text">${escapeHtml(text)}</div><div class="vivace-preview-actions"><button type="button" class="is-secondary" data-vivace-edit="${questionId}">ערוך תמלול</button></div>`);
+ const result=panel(questionId),edit=$(`[data-vivace-edit="${questionId}"]`,result);if(edit)edit.onclick=()=>renderReview(questionId,approved.audioSha256||'',{transcript:text,source:approved.source||'user-approved'})
+}
+
+function renderReview(questionId,hash,data){
+ const initial=clean(data?.transcript);if(!initial){renderUnclear(questionId);return}
+ setPanel(questionId,'review',`<label class="vivace-transcript-label">בדוק ותקן את התמלול<textarea class="vivace-transcript-editor" data-vivace-transcript="${questionId}" rows="3">${escapeHtml(initial)}</textarea></label><div class="vivace-preview-actions"><button type="button" class="is-primary" data-vivace-approve="${questionId}">אישור התמלול</button></div>`);
+ const result=panel(questionId),approve=$(`[data-vivace-approve="${questionId}"]`,result),editor=$(`[data-vivace-transcript="${questionId}"]`,result);
+ if(approve)approve.onclick=()=>{const text=clean(editor?.value);if(!text){editor?.focus();return}const all=readApproved();all[questionId]={questionId:Number(questionId),text,source:clean(data?.source||'gemini-preview'),audioSha256:hash,approvedAt:new Date().toISOString()};writeApproved(all);renderApproved(questionId,all[questionId])};
+}
+
+async function requestPreview(record,hash,quality){
+ const questionId=Number(record?.questionId||0),blob=record?.blob;if(!questionId||!blob)throw new Error('MISSING_AUDIO');
+ if(!$('#v15PrivacyAck')?.checked)throw new Error('CONSENT_REQUIRED');
+ const invite=sessionStorage.getItem('vivace-invite-token-v1')||'';if(!invite)throw new Error('INVITE_MISSING');
+ const form=new FormData();form.append('audio',blob,`Q${String(questionId).padStart(2,'0')}.webm`);form.append('questionId',String(questionId));form.append('invite',invite);form.append('sha256',hash);form.append('quality',JSON.stringify(quality||{}));
+ const controller=new AbortController();activePreview={questionId,controller};
+ let response;
+ try{response=await nativeFetch(PREVIEW_API,{method:'POST',headers:{'x-vivace-form':FORM_HEADER},body:form,cache:'no-store',signal:controller.signal})}
+ finally{if(activePreview?.controller===controller)activePreview=null}
+ let data={};try{data=await response.json()}catch{}
+ if(!response.ok||!data.ok){const error=new Error(data.error||`HTTP_${response.status}`);error.data=data;throw error}return data
+}
+
+async function scan(){
+ if(running||!$('#v15PrivacyAck')?.checked)return;
+ running=true;
+ try{
+  const recordings=await getRecordings(),approved=readApproved();
+  for(const record of recordings){
+   const questionId=Number(record?.questionId||0),blob=record?.blob;if(!questionId||!blob)continue;
+   if(RECORDING.has(questionId))continue;
+   const generation=GENERATION.get(questionId)||0;
+   let hash='';try{hash=await sha256(blob)}catch{continue}
+   if(RECORDING.has(questionId)||(GENERATION.get(questionId)||0)!==generation){SEEN.delete(questionId);continue}
+   if(approved[questionId]?.audioSha256===hash&&clean(approved[questionId]?.text)){if(SEEN.get(questionId)!==hash||cardFor(questionId)?.dataset.transcriptStatus!=='approved')renderApproved(questionId,approved[questionId]);SEEN.set(questionId,hash);continue}
+   if(SEEN.get(questionId)===hash)continue;
+   SEEN.set(questionId,hash);invalidate(questionId);renderProcessing(questionId);
+   try{
+    const quality=typeof window.__vivaceAnalyzeAudio==='function'?await window.__vivaceAnalyzeAudio(blob):null;
+    if(RECORDING.has(questionId)||(GENERATION.get(questionId)||0)!==generation){SEEN.delete(questionId);continue}
+    if(quality&&quality.usable===false){renderUnclear(questionId);continue}
+    const result=await requestPreview(record,hash,quality);
+    if(RECORDING.has(questionId)||(GENERATION.get(questionId)||0)!==generation){SEEN.delete(questionId);continue}
+    if(result.status!=='ok'||!clean(result.transcript)){renderUnclear(questionId);continue}
+    renderReview(questionId,hash,result)
+   }catch(error){
+    if(RECORDING.has(questionId)||(GENERATION.get(questionId)||0)!==generation){SEEN.delete(questionId);continue}
+    if(error?.name==='AbortError'){SEEN.delete(questionId);if(!RECORDING.has(questionId)&&!$('#v15PrivacyAck')?.checked)setPanel(questionId,'pending','<div class="vivace-preview-head"><span class="vivace-preview-badge">התמלול מושהה</span></div><div class="vivace-preview-copy">אשר את ההקלטות כדי להמשיך.</div>');continue}
+    console.error('Vivace preview failed',error);renderFailure(questionId,error)
+   }
+  }
+ }finally{running=false}
+}
+
 window.__vivaceGetApprovedPreviewTranscripts=()=>readApproved();
-window.fetch=async function(input,init){try{const url=typeof input==='string'?input:input?.url||'';if(url.includes(SUBMIT_API)&&init?.method?.toUpperCase()==='POST'&&typeof init.body==='string'){const body=JSON.parse(init.body);if(body?.action==='prepare'){body.previewTranscripts=Object.values(readApproved()).map(x=>({questionId:Number(x.questionId),text:clean(x.text),source:'gemini-preview:user-approved',audioSha256:clean(x.audioSha256),approvedAt:x.approvedAt||null,userApproved:true})).filter(x=>x.questionId&&x.text);init={...init,body:JSON.stringify(body)}}}}catch(e){console.warn('Vivace preview transcript injection skipped',e)}return nativeFetch(input,init)};
-setInterval(()=>void scan(),1200);setTimeout(()=>void scan(),500);
+window.__vivaceIsTranscriptApproved=questionId=>cardFor(questionId)?.dataset.transcriptStatus==='approved';
+
+window.fetch=async function(input,init){
+ try{
+  const url=typeof input==='string'?input:input?.url||'';
+  if(url.includes(SUBMIT_API)&&String(init?.method||'GET').toUpperCase()==='POST'&&typeof init.body==='string'){
+   const body=JSON.parse(init.body);
+   if(body?.action==='prepare'){
+    const approved=Object.values(readApproved()).map(item=>({questionId:Number(item.questionId),text:clean(item.text),source:'gemini-preview:user-approved',audioSha256:clean(item.audioSha256),approvedAt:item.approvedAt||null,userApproved:true})).filter(item=>item.questionId&&item.text);
+    body.previewTranscripts=approved;
+    if(Array.isArray(body.questions))body.questions=body.questions.map(question=>{const transcript=approved.find(item=>Number(item.questionId)===Number(question?.number));if(!transcript)return question;const answers=Array.isArray(question.answers)?question.answers.filter(answer=>answer?.name!==APPROVED_ANSWER):[];answers.push({name:APPROVED_ANSWER,value:transcript.text});return{...question,answers}});
+    init={...init,body:JSON.stringify(body)}
+   }
+  }
+ }catch(error){console.warn('Vivace preview transcript injection skipped',error)}
+ return nativeFetch(input,init)
+};
+
+document.addEventListener('vivace:recording-started',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;GENERATION.set(questionId,(GENERATION.get(questionId)||0)+1);RECORDING.add(questionId);if(activePreview?.questionId===questionId)activePreview.controller.abort();SEEN.delete(questionId);removePanel(questionId)});
+document.addEventListener('vivace:recording-saved',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;GENERATION.set(questionId,(GENERATION.get(questionId)||0)+1);RECORDING.delete(questionId);invalidate(questionId);SEEN.delete(questionId);renderProcessing(questionId);void scan()});
+document.addEventListener('vivace:recording-cancelled',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;GENERATION.set(questionId,(GENERATION.get(questionId)||0)+1);RECORDING.delete(questionId);SEEN.delete(questionId);if(event.detail?.hadPrevious)void scan();else removePanel(questionId)});
+document.addEventListener('vivace:recording-deleted',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;GENERATION.set(questionId,(GENERATION.get(questionId)||0)+1);RECORDING.delete(questionId);if(activePreview?.questionId===questionId)activePreview.controller.abort();invalidate(questionId);SEEN.delete(questionId);removePanel(questionId)});
+document.addEventListener('change',event=>{if(event.target?.id!=='v15PrivacyAck')return;if(event.target.checked)void scan();else{activePreview?.controller.abort();SEEN.clear()}});
+
+setInterval(()=>void scan(),1400);
+setTimeout(()=>void scan(),600);
 })();
