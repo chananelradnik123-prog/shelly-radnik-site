@@ -1,10 +1,12 @@
 (()=>{'use strict';
 
 window.__vivaceAudioEnabled=true;
+window.__vivaceUploadRawAudio=false;
 
 const FORM_STORAGE_KEY='vivace-owner-short-v15';
 const AUDIO_DB='vivace-owner-discovery-audio-v1';
 const AUDIO_STORE='recordings';
+const AUDIO_CLEANUP_PENDING_KEY='vivace-local-audio-cleanup-pending-v1';
 const MAX_RECORDING_MS=5*60*1000;
 const VIVACE_LOGO_SRC='data:image/webp;base64,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';
 const REQUIRED_IDS=new Set(['1','2','3','4','5','6','7','8','9','10','11','12','13','14']);
@@ -19,7 +21,9 @@ let activeChunks=[];
 let activeQuestionId='';
 let timerHandle=null;
 let timerStartedAt=0;
+let submissionComplete=false;
 const audioUrls=new Map();
+const pendingAudioWrites=new Set();
 
 const questions=[
  {id:1,title:'באיזה סניף נריץ את הפיילוט הראשון?',tag:'',body:radio('pilot_branch',['קריית יערים','בית שמש','סניף אחר'])+conditionalTextInput('pilot_branch_other','שם הסניף האחר','pilot_branch','סניף אחר')},
@@ -72,8 +76,8 @@ function formMarkup(){
    <div class="v15-hero-copy"><h1 id="v15IntroTitle">פיילוט אחד. החלטה ברורה.</h1><p>כ־6–8 דקות כדי לבחור את הפיילוט הראשון של Vivace OS.</p></div>
    <div class="v15-logo-card"><img src="${VIVACE_LOGO_SRC}" alt="Vivace — Famiglia & Pizza"><span>FAMIGLIA &amp; PIZZA</span></div>
    <section class="v15-consent-panel" id="v15ConsentPanel" aria-labelledby="v15ConsentTitle">
-    <div class="v15-consent-copy"><strong id="v15ConsentTitle">רוצה לענות בקול?</strong><span>אישור אחד מפעיל את ההקלטה לכל השאלון.</span></div>
-    <label class="v15-consent"><input id="v15PrivacyAck" name="privacy_ack" type="checkbox"><span>אני מאשר שההקלטות יישלחו ל־Google Gemini לצורך תמלול, ולא אקליט סיסמאות או פרטי תשלום.</span></label>
+    <div class="v15-consent-copy"><strong id="v15ConsentTitle">רוצה לענות בקול?</strong><span>האודיו ישמש לתמלול זמני דרך Google Gemini; עם השאלון יישמר רק הטקסט שתאשר.</span></div>
+    <label class="v15-consent"><input id="v15PrivacyAck" name="privacy_ack" type="checkbox"><span>אני מאשר שההקלטות יישלחו זמנית דרך שירות Vivace ל־Google Gemini לצורך תמלול, ולא אקליט סיסמאות או פרטי תשלום. האודיו לא יצורף לשאלון ויימחק מהמכשיר אחרי שליחה מוצלחת.</span></label>
    </section>
    <div class="v15-identity">
     <label><span>שם ממלא השאלון</span><input id="v15RespondentName" name="respondent_name" type="text" autocomplete="name"></label>
@@ -91,7 +95,7 @@ function formMarkup(){
   <div class="v15-consent-dialog" id="v15ConsentDialog" role="dialog" aria-modal="true" aria-labelledby="v15DialogTitle" hidden>
    <div class="v15-consent-sheet">
     <h2 id="v15DialogTitle">אישור הקלטה</h2>
-    <p>ההקלטה תישלח ל־Google Gemini לתמלול. אין להקליט סיסמאות או פרטי תשלום.</p>
+    <p>ההקלטה תישלח זמנית דרך שירות Vivace ל־Google Gemini לתמלול. עם השאלון יישלח רק התמלול שתאשר, והאודיו יימחק מהמכשיר אחרי שליחה מוצלחת. אין להקליט סיסמאות או פרטי תשלום.</p>
     <div class="v15-dialog-actions"><button id="v15ConsentCancel" type="button">לא עכשיו</button><button id="v15ConsentContinue" type="button">מאשר ומפעיל מיקרופון</button></div>
    </div>
   </div>
@@ -145,9 +149,28 @@ async function deleteRecording(questionId){
  const db=await openAudioDB();try{await new Promise((resolve,reject)=>{const tx=db.transaction(AUDIO_STORE,'readwrite'),store=tx.objectStore(AUDIO_STORE);store.delete(Number(questionId));store.delete(String(questionId));tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}finally{db.close()}
 }
 
+async function clearLocalRecordingsOnce(){
+ const db=await openAudioDB();try{await new Promise((resolve,reject)=>{const tx=db.transaction(AUDIO_STORE,'readwrite');tx.objectStore(AUDIO_STORE).clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('AUDIO_CLEAR_ABORTED'))})}finally{db.close()}
+}
+
+async function clearLocalRecordings(){
+ submissionComplete=true;await Promise.allSettled([...pendingAudioWrites]);
+ let lastError=null;for(let attempt=0;attempt<3;attempt++){try{await clearLocalRecordingsOnce();lastError=null;break}catch(error){lastError=error;if(attempt<2)await new Promise(resolve=>setTimeout(resolve,300*(attempt+1)))}}
+ if(lastError)throw lastError;
+ audioUrls.forEach(url=>{try{URL.revokeObjectURL(url)}catch{}});audioUrls.clear();$$('.record-playback').forEach(playback=>{playback.hidden=true;playback.replaceChildren()});
+ try{localStorage.removeItem(AUDIO_CLEANUP_PENDING_KEY)}catch{}
+}
+
+window.__vivaceClearLocalRecordings=clearLocalRecordings;
+
 function bestMimeType(){return ['audio/webm;codecs=opus','audio/webm','audio/mp4;codecs=mp4a.40.2','audio/mp4'].find(type=>window.MediaRecorder?.isTypeSupported?.(type))||''}
 function formatTime(ms){const seconds=Math.floor(ms/1000);return `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`}
 function stopRecording(){if(activeRecorder?.state==='recording')activeRecorder.stop()}
+
+function queueRecordingSave(questionId,blob,hadPrevious){
+ const pending=putRecording(questionId,blob).then(()=>renderRecording(questionId,blob)).then(()=>document.dispatchEvent(new CustomEvent('vivace:recording-saved',{detail:{questionId:Number(questionId)}})));
+ pendingAudioWrites.add(pending);void pending.catch(error=>{console.error('Vivace recording save failed',error);void renderRecording(questionId).finally(()=>document.dispatchEvent(new CustomEvent('vivace:recording-cancelled',{detail:{questionId:Number(questionId),hadPrevious}})));showToast(hadPrevious?'לא הצלחנו לשמור את ההקלטה החדשה — התשובה הקודמת נשארה.':'לא הצלחנו לשמור את ההקלטה. נסה שוב.')}).finally(()=>pendingAudioWrites.delete(pending));
+}
 
 function requestRecordingConsent(){
  if($('#v15PrivacyAck')?.checked)return Promise.resolve(true);
@@ -177,14 +200,16 @@ async function renderRecording(questionId,source=undefined){
 
 async function startRecording(questionId,box){
  const qid=String(questionId),button=$('.record-button',box),label=$('.record-label',button),timer=$('.record-timer',button),status=$('.record-status',box),hadPrevious=box?.closest('.v15-question')?.dataset.hasRecording==='true';
+ if(submissionComplete)return;
  if(!await requestRecordingConsent())return;
+ if(submissionComplete)return;
  if(!window.isSecureContext||!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){status.textContent='הדפדפן הזה לא מאפשר כרגע הקלטה';showToast('הקלטה דורשת דפדפן שתומך במיקרופון וקישור מאובטח.');return}
  if(activeRecorder?.state==='recording'){if(activeQuestionId===qid)stopRecording();else showToast('כבר מתבצעת הקלטה בשאלה אחרת. עצור אותה קודם.');return}
  try{
-  activeStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});const mimeType=bestMimeType();const recorder=mimeType?new MediaRecorder(activeStream,{mimeType}):new MediaRecorder(activeStream);activeRecorder=recorder;activeQuestionId=qid;activeChunks=[];
+  const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});if(submissionComplete){stream.getTracks().forEach(track=>track.stop());return}activeStream=stream;const mimeType=bestMimeType();const recorder=mimeType?new MediaRecorder(activeStream,{mimeType}):new MediaRecorder(activeStream);activeRecorder=recorder;activeQuestionId=qid;activeChunks=[];
   let recorderFailed=false;
   recorder.ondataavailable=event=>{if(event.data?.size)activeChunks.push(event.data)};
-   recorder.onstop=()=>{const blob=new Blob(activeChunks,{type:recorder.mimeType||mimeType||'audio/webm'});activeStream?.getTracks().forEach(track=>track.stop());activeStream=null;activeRecorder=null;activeQuestionId='';activeChunks=[];clearInterval(timerHandle);timerHandle=null;button.classList.remove('recording');if(recorderFailed){void renderRecording(qid).finally(()=>document.dispatchEvent(new CustomEvent('vivace:recording-cancelled',{detail:{questionId:Number(qid),hadPrevious}})));showToast(hadPrevious?'ההקלטה החדשה נכשלה — התשובה הקודמת נשארה.':'ההקלטה נכשלה. נסה שוב.');return}if(blob.size<1){void renderRecording(qid).finally(()=>document.dispatchEvent(new CustomEvent('vivace:recording-cancelled',{detail:{questionId:Number(qid),hadPrevious}})));status.textContent=hadPrevious?'לא נקלט אודיו חדש; התשובה הקודמת נשארה':'לא נקלט אודיו. נסה שוב.';showToast(hadPrevious?'לא נקלט אודיו חדש — התשובה הקודמת נשארה.':'לא נקלט אודיו. נסה להקליט שוב.');return}void putRecording(qid,blob).then(()=>renderRecording(qid,blob)).then(()=>document.dispatchEvent(new CustomEvent('vivace:recording-saved',{detail:{questionId:Number(qid)}}))).catch(error=>{console.error('Vivace recording save failed',error);void renderRecording(qid).finally(()=>document.dispatchEvent(new CustomEvent('vivace:recording-cancelled',{detail:{questionId:Number(qid),hadPrevious}})));showToast(hadPrevious?'לא הצלחנו לשמור את ההקלטה החדשה — התשובה הקודמת נשארה.':'לא הצלחנו לשמור את ההקלטה. נסה שוב.')})};
+   recorder.onstop=()=>{const blob=new Blob(activeChunks,{type:recorder.mimeType||mimeType||'audio/webm'});activeStream?.getTracks().forEach(track=>track.stop());activeStream=null;activeRecorder=null;activeQuestionId='';activeChunks=[];clearInterval(timerHandle);timerHandle=null;button.classList.remove('recording');if(submissionComplete)return;if(recorderFailed){void renderRecording(qid).finally(()=>document.dispatchEvent(new CustomEvent('vivace:recording-cancelled',{detail:{questionId:Number(qid),hadPrevious}})));showToast(hadPrevious?'ההקלטה החדשה נכשלה — התשובה הקודמת נשארה.':'ההקלטה נכשלה. נסה שוב.');return}if(blob.size<1){void renderRecording(qid).finally(()=>document.dispatchEvent(new CustomEvent('vivace:recording-cancelled',{detail:{questionId:Number(qid),hadPrevious}})));status.textContent=hadPrevious?'לא נקלט אודיו חדש; התשובה הקודמת נשארה':'לא נקלט אודיו. נסה שוב.';showToast(hadPrevious?'לא נקלט אודיו חדש — התשובה הקודמת נשארה.':'לא נקלט אודיו. נסה להקליט שוב.');return}queueRecordingSave(qid,blob,hadPrevious)};
   recorder.onerror=event=>{console.error('Vivace MediaRecorder error',event);recorderFailed=true;status.textContent='ההקלטה נעצרה בגלל תקלה';stopRecording()};recorder.start(250);button.classList.add('recording');button.classList.remove('has-recording');label.textContent='עצור הקלטה';status.textContent='מקליט עכשיו… לחץ שוב לעצירה';document.dispatchEvent(new CustomEvent('vivace:recording-started',{detail:{questionId:Number(qid)}}));timerStartedAt=Date.now();timer.textContent='00:00';timerHandle=setInterval(()=>{timer.textContent=formatTime(Date.now()-timerStartedAt);if(Date.now()-timerStartedAt>=MAX_RECORDING_MS){stopRecording();showToast('ההקלטה נעצרה אוטומטית אחרי 5 דקות')}},250);
  }catch(error){console.error('Vivace microphone permission failed',error);activeStream?.getTracks().forEach(track=>track.stop());activeStream=null;activeRecorder=null;activeQuestionId='';status.textContent=error?.name==='NotFoundError'?'לא נמצא מיקרופון במכשיר':'נדרשת הרשאת מיקרופון';showToast(error?.name==='NotFoundError'?'לא נמצא מיקרופון זמין במכשיר.':'יש לאשר גישה למיקרופון בהגדרות הדפדפן.')}
 }
@@ -321,7 +346,7 @@ function updateCounters(){
 
 function enhanceSubmit(){
  const card=$('#v9FinalSubmit');if(!card)return;
- const copy=$('div[style*="font-size:14px"]',card);if(copy)copy.textContent='סיימת? בדוק את הפרטים ושלח.';
+ const copy=$('div[style*="font-size:14px"]',card);if(copy)copy.textContent='סיימת? בדוק את הפרטים ושלח. מתשובות קוליות יצורף רק התמלול שאישרת.';
  const button=$('#v9Send',card),status=$('#v9Status',card);if(button&&button.dataset.inviteGate!=='1'){button.disabled=true;button.style.opacity='.55';button.style.cursor='not-allowed';if(status&&!status.textContent)status.textContent='מאמת קישור הזמנה…'}
  if(!$('#v15SubmitMissing',card)&&status){const missing=document.createElement('div');missing.id='v15SubmitMissing';missing.className='v15-missing-list v15-submit-missing';status.insertAdjacentElement('beforebegin',missing)}
  $('.v15-audio-note',card)?.remove();
@@ -370,6 +395,7 @@ function bind(){
   const submit=$('#v9FinalSubmit');submit?.scrollIntoView({behavior:'smooth',block:'center'});$('#v9Send')?.focus();
  },true);
  document.addEventListener('vivace:transcript-state-changed',()=>updateProgress());
+ document.addEventListener('vivace:submission-complete',()=>{submissionComplete=true;try{localStorage.setItem(AUDIO_CLEANUP_PENDING_KEY,'1')}catch{}if(activeRecorder?.state==='recording')activeRecorder.stop();else{activeStream?.getTracks().forEach(track=>track.stop());activeStream=null;activeChunks=[]}});
  const recordingObserver=new MutationObserver(()=>{syncAudioConsent();updateProgress()});recordingObserver.observe(shell,{subtree:true,attributes:true,attributeFilter:['data-has-recording','data-transcript-status']});
  window.addEventListener('pagehide',()=>{activeStream?.getTracks().forEach(track=>track.stop())});
  setTimeout(()=>{enhanceSubmit();updateProgress()},1000);
@@ -384,7 +410,7 @@ function boot(){
  $$('.page,.interactive-intro,#submitOverlay,.app-toolbar').forEach(element=>element.remove());
  if(!$('#v15LegacySink')){const sink=document.createElement('div');sink.id='v15LegacySink';sink.hidden=true;sink.innerHTML='<span id="progressText"></span><span id="progressBar"></span>';document.body.appendChild(sink)}
  const theme=$('meta[name="theme-color"]');if(theme)theme.content='#EA4A3E';document.title='Vivace — שאלון מיקוד לפיילוט';
- loadSaved();updateConditionalFields();updateSystemSelect();updateCounters();bind();syncAudioConsent();updateProgress();void restoreRecordings();
+ loadSaved();updateConditionalFields();updateSystemSelect();updateCounters();bind();syncAudioConsent();updateProgress();void restoreRecordings();try{if(localStorage.getItem(AUDIO_CLEANUP_PENDING_KEY)==='1')void clearLocalRecordings().catch(error=>console.warn('Vivace pending local audio cleanup failed',error))}catch{}
 }
 
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();

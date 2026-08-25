@@ -34,6 +34,7 @@ window.__vivaceAnalyzeAudio=analyze;
 window.__vivaceGetLocalRecordings=getRecordings;
 document.addEventListener('click',e=>{
  const btn=e.target?.closest?.('#v9Send');if(!btn)return;
+ if(window.__vivaceUploadRawAudio!==true)return;
  if(btn.dataset[APPROVED]==='1'){delete btn.dataset[APPROVED];return}
  e.preventDefault();e.stopImmediatePropagation();
  if(btn.dataset.vivaceAudioChecking==='1')return;

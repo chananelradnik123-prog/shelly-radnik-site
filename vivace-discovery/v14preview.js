@@ -13,6 +13,7 @@ const GENERATION=new Map();
 const nativeFetch=window.fetch.bind(window);
 let running=false;
 let activePreview=null;
+let submitted=false;
 
 const $=(selector,root=document)=>root.querySelector(selector);
 const $$=(selector,root=document)=>Array.from(root.querySelectorAll(selector));
@@ -96,7 +97,7 @@ async function requestPreview(record,hash,quality){
 }
 
 async function scan(){
- if(running||!$('#v15PrivacyAck')?.checked)return;
+ if(submitted||running||!$('#v15PrivacyAck')?.checked)return;
  running=true;
  try{
   const recordings=await getRecordings(),approved=readApproved();
@@ -118,6 +119,7 @@ async function scan(){
     if(result.status!=='ok'||!clean(result.transcript)){renderUnclear(questionId);continue}
     renderReview(questionId,hash,result)
    }catch(error){
+    if(submitted)continue;
     if(RECORDING.has(questionId)||(GENERATION.get(questionId)||0)!==generation){SEEN.delete(questionId);continue}
     if(error?.name==='AbortError'){SEEN.delete(questionId);if(!RECORDING.has(questionId)&&!$('#v15PrivacyAck')?.checked)setPanel(questionId,'pending','<div class="vivace-preview-head"><span class="vivace-preview-badge">התמלול מושהה</span></div><div class="vivace-preview-copy">אשר את ההקלטות כדי להמשיך.</div>');continue}
     console.error('Vivace preview failed',error);renderFailure(questionId,error)
@@ -150,6 +152,7 @@ document.addEventListener('vivace:recording-saved',event=>{const questionId=Numb
 document.addEventListener('vivace:recording-cancelled',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;GENERATION.set(questionId,(GENERATION.get(questionId)||0)+1);RECORDING.delete(questionId);SEEN.delete(questionId);if(event.detail?.hadPrevious)void scan();else removePanel(questionId)});
 document.addEventListener('vivace:recording-deleted',event=>{const questionId=Number(event.detail?.questionId||0);if(!questionId)return;GENERATION.set(questionId,(GENERATION.get(questionId)||0)+1);RECORDING.delete(questionId);if(activePreview?.questionId===questionId)activePreview.controller.abort();invalidate(questionId);SEEN.delete(questionId);removePanel(questionId)});
 document.addEventListener('change',event=>{if(event.target?.id!=='v15PrivacyAck')return;if(event.target.checked)void scan();else{activePreview?.controller.abort();SEEN.clear()}});
+document.addEventListener('vivace:submission-complete',()=>{submitted=true;activePreview?.controller.abort();activePreview=null;SEEN.clear();RECORDING.clear()});
 
 setInterval(()=>void scan(),1400);
 setTimeout(()=>void scan(),600);
