@@ -402,15 +402,24 @@ function bind(){
  setTimeout(()=>{enhanceSubmit();updateProgress()},1700);
 }
 
+function revealReady(){
+ document.documentElement.dataset.vivaceUiReady='1';
+ $('#v15BootScreen')?.remove();
+ $('#v15BootGuard')?.remove();
+ document.dispatchEvent(new CustomEvent('vivace:ui-ready'));
+}
+
 function boot(){
  $('#vivaceBuildBadge')?.remove();
  if(!$('#v15Styles'))styles();
- const cover=$('.page.cover');if(!cover||$('#v15ShortForm'))return;
+ if($('#v15ShortForm')){revealReady();return}
+ const cover=$('.page.cover');if(!cover)return;
  cover.insertAdjacentHTML('afterend',formMarkup());
  $$('.page,.interactive-intro,#submitOverlay,.app-toolbar').forEach(element=>element.remove());
  if(!$('#v15LegacySink')){const sink=document.createElement('div');sink.id='v15LegacySink';sink.hidden=true;sink.innerHTML='<span id="progressText"></span><span id="progressBar"></span>';document.body.appendChild(sink)}
  const theme=$('meta[name="theme-color"]');if(theme)theme.content='#EA4A3E';document.title='Vivace — שאלון מיקוד לפיילוט';
  loadSaved();updateConditionalFields();updateSystemSelect();updateCounters();bind();syncAudioConsent();updateProgress();void restoreRecordings();try{if(localStorage.getItem(AUDIO_CLEANUP_PENDING_KEY)==='1')void clearLocalRecordings().catch(error=>console.warn('Vivace pending local audio cleanup failed',error))}catch{}
+ revealReady();
 }
 
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
