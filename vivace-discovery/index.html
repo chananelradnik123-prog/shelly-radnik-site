@@ -18,6 +18,7 @@
     .vboot-line{position:relative;width:116px;height:4px;margin:20px auto 0;overflow:hidden;border-radius:999px;background:#F3D9D5}
     .vboot-line::after{content:"";position:absolute;inset:0;width:45%;border-radius:inherit;background:#EA4A3E;animation:vbootMove 1s ease-in-out infinite alternate}
     @keyframes vbootMove{to{transform:translateX(-125%)}}
+    @media(prefers-reduced-motion:reduce){.vboot-line::after{animation:none;transform:none;width:45%}}
     @media(max-width:480px){.vboot{width:calc(100% - 28px);padding:30px 20px;border-radius:20px}}
   </style>
 </head>
@@ -30,6 +31,22 @@
   </div>
   <script>
   (async()=>{
+    const showBootError=(title='לא ניתן לטעון את השאלון',copy='רענן את הדף ונסה שוב')=>{
+      const screen=document.getElementById('v15BootScreen')||document.querySelector('body > .vboot');
+      if(!screen)return;
+      const titleElement=screen.querySelector('.vboot-title'),copyElement=screen.querySelector('.vboot-copy');
+      if(titleElement)titleElement.textContent=title;
+      if(copyElement)copyElement.textContent=copy;
+      screen.querySelector('.vboot-line')?.remove();
+    };
+    window.__vivaceBootError=()=>showBootError();
+    const loadDeadline=setTimeout(()=>showBootError('הטעינה מתארכת מדי','בדוק את החיבור, רענן את הדף ונסה שוב'),15000);
+    const fetchWithTimeout=async(url,options={},timeoutMs=12000)=>{
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+      try{return await fetch(url,{...options,signal:controller.signal})}
+      catch(error){if(error?.name==='AbortError')throw new Error('LOAD_TIMEOUT');throw error}
+      finally{clearTimeout(timer)}
+    };
     try{
       const qs=new URLSearchParams(location.search);
       const inviteKey='vivace-invite-token-v1';
@@ -37,12 +54,17 @@
       if(qs.get('admin')==='1'){
         const endpoint='https://eadljasmuqnzcrfudsib.supabase.co/functions/v1/vivace-admin';
         const loginEndpoint='https://eadljasmuqnzcrfudsib.supabase.co/functions/v1/vivace-admin-login';
-        const response=await fetch(endpoint,{cache:'no-store'});
+        const response=await fetchWithTimeout(endpoint,{cache:'no-store'});
         if(!response.ok)throw new Error('admin '+response.status);
         let html=await response.text();
-        html=html.replace("const ENDPOINT=location.href.split('?')[0];",`const ENDPOINT='${endpoint}';const LOGIN_ENDPOINT='${loginEndpoint}';`);
-        html=html.replace("async function loginWithKey(key){const r=await fetch(ENDPOINT,","async function loginWithKey(key){const r=await fetch(LOGIN_ENDPOINT,");
-        if(!html.includes('const LOGIN_ENDPOINT='))throw new Error('admin login patch failed');
+        const endpointMarker=/const\s+ENDPOINT\s*=\s*location\.href\.split\(\s*['"]\?['"]\s*\)\s*\[\s*0\s*\](?=\s*[,;])/;
+        if(!endpointMarker.test(html))throw new Error('admin endpoint patch target missing');
+        html=html.replace(endpointMarker,`const ENDPOINT='${endpoint}';const LOGIN_ENDPOINT='${loginEndpoint}'`);
+        const loginMarker=/(async\s+function\s+loginWithKey\s*\([^)]*\)\s*\{[\s\S]*?\bfetch\s*\()\s*ENDPOINT\s*(?=,)/;
+        if(!loginMarker.test(html))throw new Error('admin login patch target missing');
+        html=html.replace(loginMarker,'$1LOGIN_ENDPOINT');
+        if(!/\bconst\s+LOGIN_ENDPOINT\s*=/.test(html)||!/\bfetch\s*\(\s*LOGIN_ENDPOINT\s*,/.test(html))throw new Error('admin login patch failed');
+        clearTimeout(loadDeadline);
         document.open();
         document.write(html);
         document.close();
@@ -53,7 +75,7 @@
         const sid=crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(36).slice(2)}`;
         qs.delete('new');
         qs.set('session',sid);
-        qs.set('build','clean-ui-21-0');
+        qs.set('build','clean-ui-22-0');
         history.replaceState(null,'',`${location.pathname}?${qs.toString()}`);
       }
 
@@ -79,29 +101,32 @@
         indexedDB.deleteDatabase=name=>deleteDatabase(prefix+name);
       }
 
-      const parts=[];
-      for(let index=0;index<7;index++){
-        const response=await fetch(`v5.part${String(index).padStart(2,'0')}.b64?v=5.1`,{cache:'no-store'});
-        if(!response.ok)throw new Error('part '+index);
-        parts.push(await response.text());
-      }
+      const partResponses=await Promise.all(Array.from({length:7},(_,index)=>fetchWithTimeout(`v5.part${String(index).padStart(2,'0')}.b64?v=5.1`,{cache:'force-cache'})));
+      const failedPart=partResponses.findIndex(response=>!response.ok);
+      if(failedPart!==-1)throw new Error('part '+failedPart+' '+partResponses[failedPart].status);
+      const parts=await Promise.all(partResponses.map(response=>response.text()));
 
       const binary=atob(parts.join('').replace(/\s+/g,''));
       const bytes=Uint8Array.from(binary,character=>character.charCodeAt(0));
+      if(typeof DecompressionStream!=='function')throw new Error('UNSUPPORTED_BROWSER_DECOMPRESSION');
       const stream=new DecompressionStream('gzip');
       const baseHtml=await new Response(new Blob([bytes]).stream().pipeThrough(stream)).text();
-      const bootGuard='<style id="v15BootGuard">#v15BootScreen{position:fixed!important;inset:0!important;z-index:2147483647!important;display:grid!important;place-items:center!important;min-height:100vh!important;background:#FBF8F4!important;color:#312824!important;font-family:Arial,sans-serif!important;text-align:center!important}#v15BootScreen .vboot{width:min(360px,calc(100% - 36px));padding:34px 24px;border:1px solid #E9DDD5;border-radius:24px;background:#fff;box-shadow:0 18px 48px rgba(72,45,35,.12)}#v15BootScreen .vboot-mark{display:grid;place-items:center;width:62px;height:62px;margin:0 auto 17px;border-radius:20px;background:#EA4A3E;color:#fff;font-size:30px;font-weight:950}#v15BootScreen .vboot-title{display:block;font-size:18px;font-weight:900}#v15BootScreen .vboot-copy{display:block;margin-top:7px;color:#74635B;font-size:13px}#v15BootScreen .vboot-line{position:relative;width:116px;height:4px;margin:20px auto 0;overflow:hidden;border-radius:999px;background:#F3D9D5}#v15BootScreen .vboot-line:after{content:"";position:absolute;inset:0;width:45%;border-radius:inherit;background:#EA4A3E;animation:v15BootMove 1s ease-in-out infinite alternate}@keyframes v15BootMove{to{transform:translateX(-125%)}}</style>';
+      const patchSources=['v13audioguard.js?v=22.0','v14preview.js?v=22.0','v9patch.js?v=22.0','v12invite.js?v=22.0','v15sendready.js?v=22.0'];
+      const patchPreloads=patchSources.map(src=>`<link rel="preload" as="script" href="${src}">`).join('');
+      const bootGuard='<style id="v15BootGuard">#v15BootScreen{position:fixed!important;inset:0!important;z-index:2147483647!important;display:grid!important;place-items:center!important;min-height:100vh!important;background:#FBF8F4!important;color:#312824!important;font-family:Arial,sans-serif!important;text-align:center!important}#v15BootScreen .vboot{width:min(360px,calc(100% - 36px));padding:34px 24px;border:1px solid #E9DDD5;border-radius:24px;background:#fff;box-shadow:0 18px 48px rgba(72,45,35,.12)}#v15BootScreen .vboot-mark{display:grid;place-items:center;width:62px;height:62px;margin:0 auto 17px;border-radius:20px;background:#EA4A3E;color:#fff;font-size:30px;font-weight:950}#v15BootScreen .vboot-title{display:block;font-size:18px;font-weight:900}#v15BootScreen .vboot-copy{display:block;margin-top:7px;color:#74635B;font-size:13px}#v15BootScreen .vboot-line{position:relative;width:116px;height:4px;margin:20px auto 0;overflow:hidden;border-radius:999px;background:#F3D9D5}#v15BootScreen .vboot-line:after{content:"";position:absolute;inset:0;width:45%;border-radius:inherit;background:#EA4A3E;animation:v15BootMove 1s ease-in-out infinite alternate}@keyframes v15BootMove{to{transform:translateX(-125%)}}@media(prefers-reduced-motion:reduce){#v15BootScreen .vboot-line:after{animation:none;transform:none;width:45%}}</style>';
       const bootScreen='<div id="v15BootScreen" role="status" aria-live="polite"><div class="vboot"><div class="vboot-mark" aria-hidden="true">V</div><b class="vboot-title">מכין את שאלון Vivace</b><span class="vboot-copy">עוד רגע אפשר להתחיל</span><div class="vboot-line" aria-hidden="true"></div></div></div>';
-      const guardedHtml=baseHtml.replace('<head>',`<head>${bootGuard}`).replace('<body>',`<body>${bootScreen}`);
-      const patchScripts=['v13audioguard.js?v=21.0','v14preview.js?v=21.0','v9patch.js?v=21.0','v12invite.js?v=21.0','v15sendready.js?v=21.0'].map(src=>`<script src="${src}"><`+'/script>').join('');
-      const failSafe='<script>setTimeout(()=>{const screen=document.getElementById("v15BootScreen");if(!screen)return;screen.querySelector(".vboot-title").textContent="לא ניתן לטעון את השאלון";screen.querySelector(".vboot-copy").textContent="רענן את הדף ונסה שוב";screen.querySelector(".vboot-line")?.remove()},15000);<'+'/script>';
-      const patched=guardedHtml.replace('</body>',`${patchScripts}${failSafe}</body>`);
+      const guardedHtml=baseHtml.replace('<head>',`<head>${bootGuard}${patchPreloads}`).replace('<body>',`<body>${bootScreen}`);
+      const patchScripts=patchSources.map(src=>`<script src="${src}" onerror="window.__vivacePatchLoadFailed=true;window.__vivaceBootError?.()"><`+'/script>').join('');
+      const patched=guardedHtml.replace('</body>',`${patchScripts}</body>`);
       document.open();
       document.write(patched);
       document.close();
     }catch(error){
+      clearTimeout(loadDeadline);
       console.error(error);
-      document.body.innerHTML='<div class="vboot"><div class="vboot-mark" aria-hidden="true">V</div><b class="vboot-title">לא ניתן לטעון את השאלון</b><span class="vboot-copy">רענן את הדף ונסה שוב</span></div>';
+      const unsupported=error?.message==='UNSUPPORTED_BROWSER_DECOMPRESSION';
+      const timeout=error?.message==='LOAD_TIMEOUT';
+      document.body.innerHTML=`<div class="vboot"><div class="vboot-mark" aria-hidden="true">V</div><b class="vboot-title">${unsupported?'הדפדפן אינו נתמך':timeout?'הטעינה מתארכת מדי':'לא ניתן לטעון את השאלון'}</b><span class="vboot-copy">${unsupported?'פתח את השאלון ב-Chrome, Safari, Edge או Firefox מעודכנים':timeout?'בדוק את החיבור, רענן את הדף ונסה שוב':'רענן את הדף ונסה שוב'}</span></div>`;
     }
   })();
   </script>
