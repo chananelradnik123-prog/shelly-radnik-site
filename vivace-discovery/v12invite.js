@@ -29,7 +29,7 @@ function decorateQuestions(input){
  if(!questions.length)questions.push({number:1,question:'שאלה 1',answers:[]});
  questions[0].answers.push({name:INVITE_FIELD,value:inviteToken});
  questions[0].answers.push({name:SESSION_FIELD,value:clientSessionKey});
- if(document.querySelector('#v15PrivacyAck')?.checked)questions[0].answers.push({name:PRIVACY_FIELD,value:'gemini-free-no-sensitive-v1'});
+ if(document.querySelector('#v15PrivacyAck')?.checked)questions[0].answers.push({name:PRIVACY_FIELD,value:'gemini-paid-user-consent-v1'});
  return questions;
 }
 function markCompleted(){

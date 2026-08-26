@@ -31,7 +31,7 @@ async function api(body){
 function friendlyError(e){
  const code=String(e?.message||'');
  if(code.includes('SUBMISSION_ALREADY_COMPLETED'))return'השאלון כבר נשלח מהסשן הזה. אין צורך לשלוח אותו שוב.';
- if(code.includes('PRIVACY_ACK_REQUIRED'))return'כדי לשלוח יש לאשר שלא הוזן מידע אישי, סודי או רגיש.';
+ if(code.includes('PRIVACY_ACK_REQUIRED'))return'כדי לשלוח תשובה קולית יש לאשר את השימוש הזמני בהקלטה לצורך תמלול.';
  if(code.includes('INVITE_REQUIRED')||code.includes('INVITE_EXPIRED')||code.includes('INVITE_ACCESS'))return'קישור ההזמנה חסר, פג תוקף או אינו תקף. בקש קישור חדש.';
  if(code.includes('CLIENT_SESSION_INVALID'))return'לא הצלחנו לזהות את סשן הטופס. פתח מחדש את קישור ההזמנה ונסה שוב.';
  if(code.includes('RATE_LIMITED'))return'בוצעו יותר מדי ניסיונות בזמן קצר. המתן כמה דקות ונסה שוב.';
